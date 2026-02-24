@@ -1,0 +1,73 @@
+========================================
+GOOGLE GEMINI API SETUP (FREE TIER)
+========================================
+
+The chatbot now uses Google Gemini which has a FREE tier!
+
+STEPS TO GET YOUR FREE API KEY:
+--------------------------------
+
+1. Go to: https://aistudio.google.com/apikey
+   (Alternative: https://makersuite.google.com/app/apikey)
+
+2. Sign in with your Google account
+
+3. Click "Create API Key" or "Get API Key" button
+
+4. Copy the generated API key (starts with "AIza...")
+
+5. Open MoneyMind-ML/.env file
+
+6. Replace "your_gemini_api_key_here" with your actual key:
+   GEMINI_API_KEY=AIzaSy...your_actual_key_here
+
+7. Save the file
+
+8. The ML API will auto-reload (or restart it)
+
+DONE! Your chatbot is now ready to use.
+
+FREE TIER LIMITS:
+-----------------
+- 15 requests per minute
+- 1,500 requests per day  
+- 1 million tokens per day
+
+This is more than enough for development and testing!
+
+MODEL USED:
+-----------
+- gemini-2.0-flash-exp (Latest experimental model)
+- Fast responses
+- Good quality answers
+- Completely FREE
+
+TESTING:
+--------
+1. Check health: http://localhost:8000/chat/health
+   Should return: {"status":"healthy","chatbot_ready":true}
+
+2. Use the chat UI in your dashboard
+
+3. Ask questions like:
+   - "How much did I spend last month?"
+   - "What's my top spending category?"
+   - "Give me tips to save money"
+   - "How can I improve my savings rate?"
+   - "Should I invest in mutual funds?"
+   - "How much should I save for retirement?"
+
+The chatbot will:
+✓ Fetch your real-time data from Supabase
+✓ Provide personalized financial advice
+✓ Answer general finance questions
+✓ Suggest actionable steps
+
+TROUBLESHOOTING:
+----------------
+If you see "chatbot_ready": false:
+1. Make sure GEMINI_API_KEY is set in .env
+2. Check the API key is valid (starts with "AIza")
+3. Restart ML API: python ml_api_v2.py
+4. Check logs for any errors
+
