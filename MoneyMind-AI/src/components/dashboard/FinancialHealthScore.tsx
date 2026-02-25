@@ -37,12 +37,13 @@ const getScoreLabel = (score: number) => {
 };
 
 export default function FinancialHealthScore({ score: propScore }: FinancialHealthScoreProps) {
-  const [calculatedScore, setCalculatedScore] = useState(propScore || 50);
+  const [calculatedScore, setCalculatedScore] = useState(propScore ?? 0);
+  const [hasData, setHasData] = useState(false);
   const [factors, setFactors] = useState<HealthFactors>({
-    spendingControl: 50,
-    goalProgress: 50,
-    savingsRate: 50,
-    debtRatio: 50,
+    spendingControl: 0,
+    goalProgress: 0,
+    savingsRate: 0,
+    debtRatio: 0,
   });
   const [aiInsight, setAiInsight] = useState('Add transactions to get personalized AI insights.');
 
@@ -60,9 +61,19 @@ export default function FinancialHealthScore({ score: propScore }: FinancialHeal
         .select('amount, type, occurred_at');
 
       if (!transactions || transactions.length === 0) {
+        setHasData(false);
+        setCalculatedScore(0);
+        setFactors({
+          spendingControl: 0,
+          goalProgress: 0,
+          savingsRate: 0,
+          debtRatio: 0,
+        });
         setAiInsight('Start adding transactions to calculate your financial health score!');
         return;
       }
+
+      setHasData(true);
 
       // Calculate total income and expenses
       let totalIncome = 0;
@@ -101,12 +112,12 @@ export default function FinancialHealthScore({ score: propScore }: FinancialHeal
         savingsRate = Math.max(0, Math.min(100, (savings / totalIncome) * 100));
       }
 
-      // 3. Goal Progress (0-100)
+      // 3. Goal Progress (0-100) - 0 if no goals set
       const { data: goals } = await supabase
         .from('goals')
         .select('target_amount, current_amount');
 
-      let goalProgress = 50;
+      let goalProgress = 0;
       if (goals && goals.length > 0) {
         const totalProgress = goals.reduce((sum, g) => {
           const progress = (Number(g.current_amount) / Number(g.target_amount)) * 100;
@@ -170,9 +181,9 @@ export default function FinancialHealthScore({ score: propScore }: FinancialHeal
     setAiInsight(insights[0] || 'Keep tracking your expenses to get personalized insights!');
   };
 
-  const score = propScore || calculatedScore;
+  const score = propScore ?? calculatedScore;
   const circumference = 2 * Math.PI * 45;
-  const strokeDashoffset = circumference - (score / 100) * circumference;
+  const strokeDashoffset = hasData ? circumference - (score / 100) * circumference : circumference;
 
   const factorsList = [
     { icon: Wallet, label: 'Spending Control', score: factors.spendingControl },

@@ -16,17 +16,44 @@ class ImprovedSpendingForecaster:
         
     def prepare_time_series(self, df, freq='D'):
         """Prepare time series with proper handling of missing dates"""
-        expenses = df[df['amount'] < 0].copy()
-        expenses['spending'] = abs(expenses['amount'])
-        expenses['date'] = pd.to_datetime(expenses['date'])
+        # Check if 'type' column exists (user transactions), otherwise use amount < 0 (CSV data)
+        if 'type' in df.columns:
+            expenses = df[df['type'] == 'expense'].copy()
+            expenses['spending'] = expenses['amount'].astype(float)
+        else:
+            # Fallback for CSV data without type column
+            expenses = df[df['amount'] < 0].copy()
+            expenses['spending'] = abs(expenses['amount'])
+        
+        expenses['date'] = pd.to_datetime(expenses['date'], errors='coerce')
+        
+        # Remove invalid dates
+        expenses = expenses.dropna(subset=['date'])
+        
+        if len(expenses) == 0:
+            # Return empty series with today as index
+            today = pd.Timestamp.now().normalize()
+            return pd.Series([0.0], index=[today])
         
         # Daily aggregation
         daily_spending = expenses.groupby('date')['spending'].sum()
         
+        # Handle single date case
+        if len(daily_spending) == 1:
+            # Return as-is, no date range expansion needed
+            return daily_spending
+        
         # Create complete date range
+        min_date = daily_spending.index.min()
+        max_date = daily_spending.index.max()
+        
+        if pd.isna(min_date) or pd.isna(max_date):
+            today = pd.Timestamp.now().normalize()
+            return pd.Series([0.0], index=[today])
+        
         date_range = pd.date_range(
-            start=daily_spending.index.min(),
-            end=daily_spending.index.max(),
+            start=min_date,
+            end=max_date,
             freq=freq
         )
         
@@ -44,30 +71,44 @@ class ImprovedSpendingForecaster:
         
         print(f"Training SARIMAX on {len(self.daily_spending)} days of data")
         
-        # SARIMAX with weekly seasonality
-        # (p,d,q) x (P,D,Q,s)
-        # s=7 for weekly seasonality
-        try:
-            self.sarimax_model = SARIMAX(
-                self.daily_spending,
-                order=(1, 1, 1),  # ARIMA order
-                seasonal_order=(1, 0, 1, 7),  # Weekly seasonality
-                enforce_stationarity=False,
-                enforce_invertibility=False
-            )
-            
-            self.sarimax_model = self.sarimax_model.fit(disp=False, maxiter=100)
-            
-            # Save model
-            joblib.dump(self.sarimax_model, 'sarimax_model.pkl')
-            
-            print("SARIMAX model trained successfully")
-            print(f"AIC: {self.sarimax_model.aic:.2f}")
-            
-        except Exception as e:
-            print(f"SARIMAX training failed: {e}")
-            print("Falling back to simpler model...")
-            self._train_fallback_model(df)
+        # Check if we have enough variation in data for time series modeling
+        non_zero_days = (self.daily_spending > 0).sum()
+        unique_values = len(self.daily_spending[self.daily_spending > 0].unique())
+        
+        print(f"Data variation: {non_zero_days} non-zero days, {unique_values} unique values")
+        
+        # If data is too sparse for SARIMAX (less than 7 unique days with expenses), just use fallback
+        if non_zero_days < 7 or unique_values < 3:
+            print("Insufficient variation for SARIMAX, using average-based forecast")
+            self.sarimax_model = None
+            # Don't return - let it fall through to train ETS as fallback
+        else:
+            # Try SARIMAX with weekly seasonality
+            try:
+                self.sarimax_model = SARIMAX(
+                    self.daily_spending,
+                    order=(1, 1, 1),  # ARIMA order
+                    seasonal_order=(1, 0, 1, 7),  # Weekly seasonality
+                    enforce_stationarity=False,
+                    enforce_invertibility=False
+                )
+                
+                self.sarimax_model = self.sarimax_model.fit(disp=False, maxiter=100)
+                
+                # Save model
+                joblib.dump(self.sarimax_model, 'sarimax_model.pkl')
+                
+                print("SARIMAX model trained successfully")
+                print(f"AIC: {self.sarimax_model.aic:.2f}")
+                return  # Success - don't train fallback
+                
+            except Exception as e:
+                print(f"SARIMAX training failed: {e}")
+                print("Falling back to simpler model...")
+                self.sarimax_model = None
+        
+        # Train fallback ETS model
+        self._train_fallback_model(df)
     
     def _train_fallback_model(self, df):
         """Fallback to Exponential Smoothing if SARIMAX fails"""
@@ -183,9 +224,14 @@ class ImprovedSpendingForecaster:
         """Generate actionable insights with forecasts"""
         insights = []
         
-        # Historical analysis
-        expenses = df[df['amount'] < 0].copy()
-        expenses['spending'] = abs(expenses['amount'])
+        # Check if 'type' column exists
+        if 'type' in df.columns:
+            expenses = df[df['type'] == 'expense'].copy()
+            expenses['spending'] = expenses['amount'].astype(float)
+        else:
+            # Fallback for CSV data without type column
+            expenses = df[df['amount'] < 0].copy()
+            expenses['spending'] = abs(expenses['amount'])
         
         # Overall statistics
         daily_avg = expenses['spending'].sum() / len(expenses['date'].unique())

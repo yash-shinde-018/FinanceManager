@@ -115,7 +115,7 @@ export default function ForgotPasswordPage() {
                         {...register('email')}
                         type="email"
                         placeholder="you@example.com"
-                        className="input-premium pl-10"
+                        className="input-premium input-with-left-icon"
                       />
                     </div>
                     {errors.email && (

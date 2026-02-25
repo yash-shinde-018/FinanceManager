@@ -39,7 +39,7 @@ const features = [
 ];
 
 const stats = [
-  { value: '$2.4B+', label: 'Transactions Tracked' },
+  { value: '₹2.4B+', label: 'Transactions Tracked' },
   { value: '500K+', label: 'Active Users' },
   { value: '99.9%', label: 'Uptime SLA' },
   { value: '4.9/5', label: 'User Rating' },
@@ -49,7 +49,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[var(--background)] overflow-x-hidden">
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 card-glass border-b border-[var(--glass-border)]">
+      <nav className="fixed top-4 left-4 right-4 z-50 card-glass border border-[var(--glass-border)] rounded-2xl shadow-lg max-w-7xl mx-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2">
@@ -215,9 +215,9 @@ export default function LandingPage() {
                 {/* Mock Dashboard UI */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   {[
-                    { icon: Wallet, label: 'Total Balance', value: '$24,562.00', change: '+12.5%' },
-                    { icon: PieChart, label: 'Monthly Spending', value: '$3,840.00', change: '-5.2%' },
-                    { icon: TrendingUp, label: 'Predicted', value: '$4,200.00', change: 'AI' },
+                    { icon: Wallet, label: 'Total Balance', value: '₹24,562.00', change: '+12.5%' },
+                    { icon: PieChart, label: 'Monthly Spending', value: '₹3,840.00', change: '-5.2%' },
+                    { icon: TrendingUp, label: 'Predicted', value: '₹4,200.00', change: 'AI' },
                     { icon: Bell, label: 'Alerts', value: '3', change: 'New' },
                   ].map((card, i) => (
                     <div key={i} className="card-gradient p-4 rounded-xl">

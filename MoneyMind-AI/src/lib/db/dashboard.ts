@@ -1,5 +1,21 @@
 import { createClient } from '@/lib/supabase/client';
-import { mlClient } from '@/lib/ml/client';
+import { mlClient, formatTransactionForML } from '@/lib/ml/client';
+import type { MLTransaction } from '@/lib/ml/client';
+
+export interface DashboardOverview {
+  totalBalance: number;
+  monthlySpending: number;
+  predictedSpending: number;
+  savingsRate: number;
+  balanceChange: number;
+  spendingChange: number;
+  anomalyAlerts: number;
+  forecastStatus?: 'ok' | 'early_stage' | 'insufficient_data';
+  forecastModelUsed?: string;
+  daysOfData?: number;
+  minDaysRequired?: number;
+  fullModelDays?: number;
+}
 
 export async function getDashboardOverview() {
   const supabase = createClient();
@@ -42,15 +58,72 @@ export async function getDashboardOverview() {
     if (t.type === 'expense') monthlySpending += Number(t.amount);
   });
 
-  // Get ML-powered forecast for next 30 days
-  let predictedSpending = monthlySpending; // fallback
-  try {
-    const forecast = await mlClient.getForecast(30);
-    if (forecast) {
-      predictedSpending = Math.abs(forecast.total_predicted);
+  // Get ML-powered forecast for next 30 days (only if user has transaction history)
+  let predictedSpending = monthlySpending; // fallback to current month
+  let forecastStatus: DashboardOverview['forecastStatus'] = 'insufficient_data';
+  let forecastModelUsed = 'No Data';
+  let daysOfData = 0;
+  
+  // Check if user has any transactions before calling ML forecast
+  const { count: transactionCount } = await supabase
+    .from('transactions')
+    .select('*', { count: 'exact', head: true });
+  
+  const hasTransactions = (transactionCount ?? 0) > 0 || monthlySpending > 0;
+  
+  if (hasTransactions) {
+    try {
+      // Fetch user's actual transactions for the ML forecast
+      const { data: userTransactions } = await supabase
+        .from('transactions')
+        .select('occurred_at, description, amount, category')
+        .order('occurred_at', { ascending: true });
+      
+      // Format transactions for ML API
+      const mlTransactions: MLTransaction[] = (userTransactions || []).map((t) => ({
+        date: t.occurred_at.split('T')[0],
+        description: t.description || 'Transaction',
+        amount: Number(t.amount),
+        category: t.category || 'Other',
+      }));
+      
+      // Call ML API with user's actual transactions
+      const forecast = await mlClient.getForecastWithTransactions(mlTransactions, 30);
+      
+      if (forecast) {
+        // Store forecast metadata
+        forecastStatus = forecast.status || 'ok';
+        forecastModelUsed = forecast.model_used || 'Unknown';
+        daysOfData = forecast.days_of_data || 0;
+        
+        // Use forecast if it has a valid positive prediction
+        if (forecast.total_predicted > 0 && forecast.total_predicted < 1000000) {
+          predictedSpending = Math.abs(forecast.total_predicted);
+        } else if (daysOfData < 14) {
+          // Less than 14 days span - insufficient data
+          predictedSpending = 0;
+          forecastStatus = 'insufficient_data';
+          forecastModelUsed = 'Need 14+ days of data';
+        } else {
+          // Has date span but forecast returned 0 - show insufficient data
+          predictedSpending = 0;
+          forecastStatus = 'insufficient_data';
+          forecastModelUsed = 'Need more transaction days';
+        }
+      } else {
+        // No forecast returned
+        predictedSpending = 0;
+        forecastStatus = 'insufficient_data';
+        forecastModelUsed = 'No forecast available';
+      }
+    } catch (error) {
+      console.error('Error getting ML forecast:', error);
     }
-  } catch (error) {
-    console.error('Error getting ML forecast:', error);
+  } else {
+    // For new users with no transactions, show 0
+    predictedSpending = 0;
+    forecastStatus = 'insufficient_data';
+    forecastModelUsed = 'No Data';
   }
 
   // Count anomaly alerts from recent transactions
@@ -71,6 +144,11 @@ export async function getDashboardOverview() {
     balanceChange: 0,
     spendingChange: 0,
     anomalyAlerts,
+    forecastStatus,
+    forecastModelUsed,
+    daysOfData,
+    minDaysRequired: 14,
+    fullModelDays: 21,
   };
 }
 

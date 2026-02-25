@@ -34,6 +34,10 @@ export interface ForecastResponse {
     upper_bound: number[];
     model_used: string;
     total_predicted: number;
+    days_of_data?: number;
+    min_days_required?: number;
+    full_model_days?: number;
+    status?: 'ok' | 'early_stage' | 'insufficient_data';
 }
 
 export interface Insight {
@@ -121,6 +125,25 @@ class MLClient {
             return await response.json();
         } catch (error) {
             console.error('Error getting forecast:', error);
+            return null;
+        }
+    }
+
+    async getForecastWithTransactions(transactions: MLTransaction[], days: number = 30): Promise<ForecastResponse | null> {
+        try {
+            const response = await fetch(`${this.baseUrl}/forecast/user?days=${days}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(transactions),
+            });
+
+            if (!response.ok) {
+                throw new Error(`ML API error: ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error('Error getting forecast with transactions:', error);
             return null;
         }
     }

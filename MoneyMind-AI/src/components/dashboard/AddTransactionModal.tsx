@@ -5,17 +5,20 @@ import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { X, DollarSign, Calendar, Tag, CreditCard, FileText, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
+import { X, IndianRupee, Calendar, Tag, CreditCard, FileText, Loader2, CheckCircle2, Sparkles, Building2, AlertTriangle, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { createTransactionWithML } from '@/lib/db/ml-transactions';
+import { createTransactionWithML, saveAnomalyFeedback } from '@/lib/db/ml-transactions';
+import { listAccounts } from '@/lib/db/accounts';
+import AnomalyReviewModal from './AnomalyReviewModal';
 
 const transactionSchema = z.object({
   amount: z.string().min(1, 'Amount is required'),
   description: z.string().min(2, 'Description must be at least 2 characters'),
-  category: z.string().optional(), // Made optional - ML will categorize
+  category: z.string().optional(),
   type: z.enum(['income', 'expense']),
   date: z.string().min(1, 'Date is required'),
   paymentMethod: z.string().min(1, 'Payment method is required'),
+  accountId: z.string().min(1, 'Please select an account'),
   merchant: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -54,6 +57,14 @@ export default function AddTransactionModal({ onClose }: AddTransactionModalProp
   const [transactionType, setTransactionType] = useState<'income' | 'expense'>('expense');
   const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null);
   const [categoryConfidence, setCategoryConfidence] = useState<number>(0);
+  const [accounts, setAccounts] = useState<Array<{ id: string; name: string; type: string; institution: string | null; balance: number }>>([]);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [showBalancePrompt, setShowBalancePrompt] = useState(false);
+  
+  // Anomaly review state
+  const [showAnomalyReview, setShowAnomalyReview] = useState(false);
+  const [createdTransaction, setCreatedTransaction] = useState<any>(null);
+  const [anomalyConfidence, setAnomalyConfidence] = useState(0);
 
   const {
     register,
@@ -71,6 +82,46 @@ export default function AddTransactionModal({ onClose }: AddTransactionModalProp
 
   const selectedCategory = watch('category');
   const description = watch('description');
+  const selectedAccountId = watch('accountId');
+  const amount = watch('amount');
+  const type = watch('type');
+
+  // Check balance when account or amount changes
+  useEffect(() => {
+    if (selectedAccountId && amount && type === 'expense') {
+      const account = accounts.find(a => a.id === selectedAccountId);
+      if (account) {
+        const expenseAmount = Number(amount);
+        if (account.balance <= 0) {
+          setBalanceError(`Your ${account.name} has ₹0 balance. Please add income first.`);
+          setShowBalancePrompt(true);
+        } else if (expenseAmount > account.balance) {
+          setBalanceError(`Insufficient balance. Available: ₹${account.balance.toLocaleString('en-IN')}`);
+          setShowBalancePrompt(true);
+        } else {
+          setBalanceError(null);
+          setShowBalancePrompt(false);
+        }
+      }
+    } else {
+      setBalanceError(null);
+      setShowBalancePrompt(false);
+    }
+  }, [selectedAccountId, amount, type, accounts]);
+
+  // Fetch accounts on mount
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        const { listAccounts } = await import('@/lib/db/accounts');
+        const data = await listAccounts();
+        setAccounts(data);
+      } catch (error) {
+        console.error('Error fetching accounts:', error);
+      }
+    };
+    fetchAccounts();
+  }, []);
 
   // Auto-suggest category based on description using ML
   useEffect(() => {
@@ -110,33 +161,97 @@ export default function AddTransactionModal({ onClose }: AddTransactionModalProp
 
   const onSubmit = async (data: TransactionFormData) => {
     setIsSubmitting(true);
+    setBalanceError(null);
 
     try {
       const amount = data.type === 'expense' ? -Number(data.amount) : Number(data.amount);
 
-      await createTransactionWithML({
+      // Check balance for expenses
+      if (data.type === 'expense') {
+        const account = accounts.find(a => a.id === data.accountId);
+        if (!account) {
+          alert('Please select an account');
+          setIsSubmitting(false);
+          return;
+        }
+        if (account.balance <= 0) {
+          alert(`Cannot create expense: Your ${account.name} has ₹0 balance. Please add income first or go to Accounts page to add balance.`);
+          setIsSubmitting(false);
+          return;
+        }
+        if (Number(data.amount) > account.balance) {
+          alert(`Cannot create expense: Insufficient balance. Available: ₹${account.balance.toLocaleString('en-IN')}, Required: ₹${Number(data.amount).toLocaleString('en-IN')}`);
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      console.log('Creating transaction with:', {
+        description: data.description,
+        amount,
+        type: data.type,
+        date: data.date,
+        paymentMethod: data.paymentMethod,
+        merchant: data.merchant,
+        accountId: data.accountId,
+      });
+
+      const result = await createTransactionWithML({
         description: data.description,
         amount,
         date: new Date(data.date),
         paymentMethod: data.paymentMethod,
         merchant: data.merchant,
+        accountId: data.accountId,
       });
 
-      setIsSuccess(true);
-      setTimeout(() => {
-        window.location.reload(); // Refresh to show new transaction
-      }, 1500);
-    } catch (error) {
+      // Check if anomaly was detected
+      if (result.is_anomaly) {
+        setCreatedTransaction(result);
+        setAnomalyConfidence(result.confidence || 0.8);
+        setShowAnomalyReview(true);
+      } else {
+        setIsSuccess(true);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      }
+    } catch (error: any) {
       console.error('Error creating transaction:', error);
-      alert('Failed to create transaction. Please try again.');
+      const errorMessage = error?.message || error?.error || 'Unknown error';
+      alert(`Failed to create transaction: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleAnomalyConfirm = async (isActuallyAnomaly: boolean, notes?: string) => {
+    if (!createdTransaction) return;
+
+    try {
+      await saveAnomalyFeedback(
+        createdTransaction.id,
+        isActuallyAnomaly,
+        true, // original prediction was anomaly
+        anomalyConfidence,
+        notes
+      );
+
+      setShowAnomalyReview(false);
+      setIsSuccess(true);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (error) {
+      console.error('Error saving anomaly feedback:', error);
+      alert('Failed to save feedback. Please try again.');
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <motion.div
+    <>
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
@@ -190,7 +305,7 @@ export default function AddTransactionModal({ onClose }: AddTransactionModalProp
               <div>
                 <label className="block text-sm font-medium mb-2">Amount</label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--muted-text)]" />
+                  <IndianRupee className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
                   <input
                     {...register('amount')}
                     type="number"
@@ -261,7 +376,7 @@ export default function AddTransactionModal({ onClose }: AddTransactionModalProp
               <div>
                 <label className="block text-sm font-medium mb-2">Date</label>
                 <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--muted-text)]" />
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-400" />
                   <input
                     {...register('date')}
                     type="date"
@@ -270,6 +385,50 @@ export default function AddTransactionModal({ onClose }: AddTransactionModalProp
                 </div>
                 {errors.date && (
                   <p className="mt-1 text-sm text-red-400">{errors.date.message}</p>
+                )}
+              </div>
+
+              {/* Account Selection */}
+              <div>
+                <label className="block text-sm font-medium mb-2">From Account</label>
+                <div className="relative">
+                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--muted-text)]" />
+                  <select
+                    {...register('accountId')}
+                    className="input-premium input-with-left-icon appearance-none cursor-pointer"
+                  >
+                    <option value="">Select account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} ({account.type}) - ₹{account.balance.toLocaleString('en-IN')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {errors.accountId && (
+                  <p className="mt-1 text-sm text-red-400">{errors.accountId.message}</p>
+                )}
+                {accounts.length === 0 && (
+                  <p className="mt-1 text-sm text-amber-400">
+                    No accounts found. Please add an account first in the Accounts page.
+                  </p>
+                )}
+                {showBalancePrompt && balanceError && (
+                  <div className="mt-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm text-amber-400">{balanceError}</p>
+                        <button
+                          type="button"
+                          onClick={() => window.location.href = '/dashboard/accounts'}
+                          className="mt-2 text-xs flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors"
+                        >
+                          Go to Accounts page to add balance <ArrowRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -358,6 +517,17 @@ export default function AddTransactionModal({ onClose }: AddTransactionModalProp
           </div>
         )}
       </motion.div>
-    </div>
+      </div>
+      
+      {/* Anomaly Review Modal */}
+      {showAnomalyReview && createdTransaction && (
+        <AnomalyReviewModal
+          transaction={createdTransaction}
+          confidence={anomalyConfidence}
+          onClose={() => setShowAnomalyReview(false)}
+          onConfirm={handleAnomalyConfirm}
+        />
+      )}
+    </>
   );
 }

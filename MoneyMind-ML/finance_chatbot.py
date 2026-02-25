@@ -87,13 +87,23 @@ class FinanceChatbot:
             base_url="https://api.groq.com/openai/v1"
         )
         
-        # Initialize ChromaDB for vector storage
-        self.chroma_client = chromadb.Client(Settings(
-            anonymized_telemetry=False,
-            allow_reset=True
-        ))
+        # Initialize ChromaDB with persistent storage
+        import chromadb
+        chroma_db_path = os.path.join(os.path.dirname(__file__), "chroma_db")
+        os.makedirs(chroma_db_path, exist_ok=True)
         
-        logger.info("Finance Chatbot initialized successfully with Groq and ChromaDB RAG")
+        self.chroma_client = chromadb.PersistentClient(
+            path=chroma_db_path,
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
+        )
+        
+        # Cache for indexed users (to avoid re-indexing)
+        self._indexed_users: Dict[str, int] = {}
+        
+        logger.info("Finance Chatbot initialized successfully with Groq and persistent ChromaDB")
     
     def get_user_data(self, user_id: str) -> Dict[str, Any]:
         """Fetch user's financial data from Supabase"""
@@ -158,55 +168,71 @@ class FinanceChatbot:
             return {}
     
     def index_user_transactions(self, user_id: str, transactions: List[Dict]) -> None:
-        """Index user transactions in ChromaDB for semantic search"""
+        """Index user transactions in ChromaDB for semantic search (with caching)"""
         try:
-            # Create or get collection for this user
-            collection_name = f"user_{user_id.replace('-', '_')}_transactions"
-            
-            try:
-                self.chroma_client.delete_collection(name=collection_name)
-            except:
-                pass
-            
             if not transactions:
                 logger.info("No transactions to index")
                 return
             
+            collection_name = f"user_{user_id.replace('-', '_')}_transactions"
+            
+            # Create a hash of transactions to check if re-indexing is needed
+            current_hash = hash(str(sorted([(t.get('id'), t.get('updated_at', t.get('occurred_at'))) for t in transactions[:100]])))
+            
+            # Check if already indexed with same data
+            if user_id in self._indexed_users and self._indexed_users[user_id] == current_hash:
+                logger.info(f"Using cached index for user {user_id}")
+                return
+            
+            # Try to get existing collection or create new
+            try:
+                collection = self.chroma_client.get_collection(name=collection_name)
+                # Check if count matches
+                if collection.count() == len(transactions):
+                    logger.info(f"Collection exists with {len(transactions)} docs for user {user_id}")
+                    self._indexed_users[user_id] = current_hash
+                    return
+                else:
+                    # Delete and recreate if count differs
+                    self.chroma_client.delete_collection(name=collection_name)
+            except:
+                pass
+            
+            # Create new collection
             collection = self.chroma_client.create_collection(
                 name=collection_name,
                 metadata={"user_id": user_id}
             )
             
-            # Prepare documents for indexing
-            documents = []
-            metadatas = []
-            ids = []
-            
-            for i, txn in enumerate(transactions):
-                # Create rich text description of transaction
-                doc_text = f"{txn['type'].title()} of ₹{txn['amount']} "
-                doc_text += f"in {txn.get('category', 'Other')} category "
-                doc_text += f"at {txn.get('merchant', 'Unknown')} "
-                doc_text += f"on {txn['occurred_at'][:10]} "
-                doc_text += f"- {txn.get('description', 'No description')}"
+            # Batch add documents (more efficient)
+            batch_size = 100
+            for batch_start in range(0, len(transactions), batch_size):
+                batch = transactions[batch_start:batch_start + batch_size]
                 
-                documents.append(doc_text)
-                metadatas.append({
-                    'amount': str(txn['amount']),
-                    'type': txn['type'],
-                    'category': txn.get('category', 'Other'),
-                    'merchant': txn.get('merchant', 'Unknown'),
-                    'date': txn['occurred_at'][:10]
-                })
-                ids.append(f"txn_{i}")
+                documents = []
+                metadatas = []
+                ids = []
+                
+                for i, txn in enumerate(batch):
+                    doc_text = f"{txn['type'].title()} of ₹{txn['amount']} "
+                    doc_text += f"in {txn.get('category', 'Other')} category "
+                    doc_text += f"at {txn.get('merchant', 'Unknown')} "
+                    doc_text += f"on {txn['occurred_at'][:10]} "
+                    doc_text += f"- {txn.get('description', 'No description')}"
+                    
+                    documents.append(doc_text)
+                    metadatas.append({
+                        'amount': str(txn['amount']),
+                        'type': txn['type'],
+                        'category': txn.get('category', 'Other'),
+                        'merchant': txn.get('merchant', 'Unknown'),
+                        'date': txn['occurred_at'][:10]
+                    })
+                    ids.append(f"txn_{batch_start + i}")
+                
+                collection.add(documents=documents, metadatas=metadatas, ids=ids)
             
-            # Add to collection
-            collection.add(
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids
-            )
-            
+            self._indexed_users[user_id] = current_hash
             logger.info(f"Indexed {len(transactions)} transactions for user {user_id}")
             
         except Exception as e:

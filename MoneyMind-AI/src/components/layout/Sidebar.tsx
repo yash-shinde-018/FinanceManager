@@ -21,7 +21,6 @@ import {
   ChevronRight,
   Sun,
   Moon,
-  Link2,
   Sparkles,
   User,
   TrendingUp,
@@ -36,13 +35,11 @@ const navItems = [
   { name: 'Goals', href: '/dashboard/goals', icon: Target },
   { name: 'Budgets', href: '/dashboard/budgets', icon: DollarSign },
   { name: 'Investments', href: '/dashboard/investments', icon: TrendingUp },
-  { name: 'Bank Accounts', href: '/dashboard/bank-accounts', icon: Building2 },
-  { name: 'Accounts', href: '/dashboard/accounts', icon: Link2 },
+  { name: 'Accounts', href: '/dashboard/accounts', icon: Building2 },
   { name: 'Analytics', href: '/dashboard/analytics', icon: PieChart },
 ];
 
 const bottomItems = [
-  { name: 'Notifications', href: '/dashboard/notifications', icon: Bell },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ];
 
@@ -97,19 +94,22 @@ export default function Sidebar({
     <>
       <motion.aside
         initial={false}
-        animate={{ width: isCollapsed ? 80 : 280 }}
+        animate={{ width: isCollapsed ? 72 : 264 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className={cn(
-          'fixed left-0 top-0 h-screen z-40 card-glass border-r border-[var(--glass-border)]',
-          'flex flex-col py-6'
+          'fixed left-2 top-2 bottom-2 z-40 card-glass border border-[var(--glass-border)] rounded-2xl shadow-lg',
+          'flex flex-col py-6 overflow-hidden'
         )}
       >
-        {/* Logo */}
-        <div className={cn(
-          'flex items-center px-6 mb-8',
-          isCollapsed && 'justify-center px-4'
-        )}>
-          <Link href="/dashboard" className="flex items-center gap-3">
+        {/* Logo - Clickable to toggle sidebar */}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className={cn(
+            'flex items-center px-6 mb-8 w-full',
+            isCollapsed && 'justify-center px-4'
+          )}
+        >
+          <Link href="/dashboard" className="flex items-center gap-3" onClick={(e) => e.preventDefault()}>
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
               <Brain className="w-6 h-6 text-white" />
             </div>
@@ -119,24 +119,12 @@ export default function Sidebar({
               </span>
             )}
           </Link>
-        </div>
-
-        {/* Toggle Button */}
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className={cn(
-            'absolute -right-3 top-20 w-6 h-6 rounded-full bg-indigo-500 text-white',
-            'flex items-center justify-center shadow-lg hover:bg-indigo-600 transition-colors',
-            'z-50'
-          )}
-        >
-          {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
 
         {/* Navigation */}
-        <nav className="flex-1 px-4 space-y-1">
+        <nav className="flex-1 px-2 space-y-1">
           {navItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(`${item.href}/`));
             return (
               <Link
                 key={item.name}
@@ -204,7 +192,7 @@ export default function Sidebar({
                 <item.icon className="w-5 h-5 shrink-0" />
                 {item.name === 'Notifications' && unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[10px] text-white flex items-center justify-center">
-                    {unreadCount > 9 ? '9+' : unreadCount}
+                    {unreadCount > 10 ? '10+' : unreadCount}
                   </span>
                 )}
               </div>

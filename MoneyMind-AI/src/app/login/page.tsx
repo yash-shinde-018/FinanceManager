@@ -49,11 +49,11 @@ export default function LoginPage() {
     setError('');
     
     try {
-      const success = await login(data.email, data.password);
-      if (success) {
+      const result = await login(data.email, data.password);
+      if (result.success) {
         router.push('/dashboard');
       } else {
-        setError('Invalid email or password');
+        setError(result.error || 'Invalid email or password');
       }
     } catch {
       setError('An error occurred. Please try again.');
@@ -110,7 +110,7 @@ export default function LoginPage() {
                 <input
                   {...register('email')}
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="rahul@email.com"
                   className="input-premium input-with-left-icon"
                 />
               </div>

@@ -22,11 +22,11 @@ interface AnalyticsData {
   totalIncome: number;
   totalExpense: number;
   netSavings: number;
-  avgDailySpend: number;
+  avgSpend: number;
   incomeChange: number;
   expenseChange: number;
   savingsChange: number;
-  dailySpendChange: number;
+  avgSpendChange: number;
   monthlyData: { month: string; income: number; expense: number }[];
   topCategories: { name: string; amount: number; percentage: number; color: string }[];
 }
@@ -42,15 +42,17 @@ const formatCurrency = (amount: number) => {
 const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
 
 export default function AnalyticsPage() {
+  const [timeRange, setTimeRange] = useState<'6months' | '1year' | 'all'>('6months');
+  const [avgPeriod, setAvgPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily');
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
     totalIncome: 0,
     totalExpense: 0,
     netSavings: 0,
-    avgDailySpend: 0,
+    avgSpend: 0,
     incomeChange: 12.5,
     expenseChange: -8.2,
     savingsChange: 45.3,
-    dailySpendChange: -5.1,
+    avgSpendChange: -5.1,
     monthlyData: [],
     topCategories: [],
   });
@@ -147,7 +149,23 @@ export default function AnalyticsPage() {
         
         const avgDailySpend = currentExpense / 30;
         const prevAvgDailySpend = prevExpense / 30;
-        const dailySpendChange = prevAvgDailySpend ? ((avgDailySpend - prevAvgDailySpend) / prevAvgDailySpend) * 100 : -5.1;
+        const avgSpendChange = prevAvgDailySpend ? ((avgDailySpend - prevAvgDailySpend) / prevAvgDailySpend) * 100 : -5.1;
+
+        // Calculate average based on selected period
+        let avgSpend = avgDailySpend;
+        switch (avgPeriod) {
+          case 'weekly':
+            avgSpend = avgDailySpend * 7;
+            break;
+          case 'monthly':
+            avgSpend = avgDailySpend * 30;
+            break;
+          case 'yearly':
+            avgSpend = avgDailySpend * 365;
+            break;
+          default: // daily
+            avgSpend = avgDailySpend;
+        }
 
         // Format monthly data for charts
         const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -189,11 +207,11 @@ export default function AnalyticsPage() {
           totalIncome: currentIncome,
           totalExpense: currentExpense,
           netSavings,
-          avgDailySpend,
+          avgSpend,
           incomeChange,
           expenseChange,
           savingsChange,
-          dailySpendChange,
+          avgSpendChange,
           monthlyData: formattedMonthlyData,
           topCategories: formattedCategories,
         });
@@ -218,7 +236,7 @@ export default function AnalyticsPage() {
     };
 
     loadAnalytics();
-  }, []);
+  }, [avgPeriod, timeRange]);
 
   const analyticsCards = [
     {
@@ -246,14 +264,58 @@ export default function AnalyticsPage() {
       color: 'indigo',
     },
     {
-      title: 'Avg. Daily Spend',
-      value: formatCurrency(analyticsData.avgDailySpend),
-      change: `${analyticsData.dailySpendChange >= 0 ? '+' : ''}${analyticsData.dailySpendChange.toFixed(1)}%`,
-      isPositive: analyticsData.dailySpendChange < 0,
+      title: `Avg. ${avgPeriod.charAt(0).toUpperCase() + avgPeriod.slice(1)} Spend`,
+      value: formatCurrency(analyticsData.avgSpend),
+      change: `${analyticsData.avgSpendChange >= 0 ? '+' : ''}${analyticsData.avgSpendChange.toFixed(1)}%`,
+      isPositive: analyticsData.avgSpendChange < 0,
       icon: Clock,
       color: 'amber',
     },
   ];
+
+  const handleExportReport = () => {
+    const csvRows = [
+      ['MoneyMind AI - Financial Analytics Report'],
+      ['Generated:', new Date().toLocaleString()],
+      ['Time Range:', timeRange],
+      ['Average Period:', avgPeriod],
+      [''],
+      ['SUMMARY'],
+      ['Total Income', `₹${analyticsData.totalIncome.toLocaleString('en-IN')}`],
+      ['Total Expense', `₹${analyticsData.totalExpense.toLocaleString('en-IN')}`],
+      ['Net Savings', `₹${analyticsData.netSavings.toLocaleString('en-IN')}`],
+      [`Average ${avgPeriod} Spend`, `₹${analyticsData.avgSpend.toLocaleString('en-IN')}`],
+      [''],
+      ['CHANGES (vs Previous Period)'],
+      ['Income Change', `${analyticsData.incomeChange >= 0 ? '+' : ''}${analyticsData.incomeChange.toFixed(1)}%`],
+      ['Expense Change', `${analyticsData.expenseChange >= 0 ? '+' : ''}${analyticsData.expenseChange.toFixed(1)}%`],
+      ['Savings Change', `${analyticsData.savingsChange >= 0 ? '+' : ''}${analyticsData.savingsChange.toFixed(1)}%`],
+      ['Avg Spend Change', `${analyticsData.avgSpendChange >= 0 ? '+' : ''}${analyticsData.avgSpendChange.toFixed(1)}%`],
+      [''],
+      ['MONTHLY BREAKDOWN'],
+      ['Month', 'Income', 'Expense', 'Savings', 'Savings Rate'],
+      ...analyticsData.monthlyData.map(m => {
+        const savings = m.income - m.expense;
+        const rate = m.income ? ((savings / m.income) * 100).toFixed(1) : '0.0';
+        return [m.month, m.income, m.expense, savings, `${rate}%`];
+      }),
+      [''],
+      ['TOP SPENDING CATEGORIES'],
+      ['Category', 'Amount', 'Percentage'],
+      ...analyticsData.topCategories.map(c => [c.name, c.amount, `${c.percentage.toFixed(1)}%`]),
+    ];
+
+    const csvContent = csvRows.map(row => row.join(',')).join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `moneymind-analytics-report-${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="space-y-6">
@@ -266,12 +328,29 @@ export default function AnalyticsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <select className="bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm">
-            <option>Last 6 Months</option>
-            <option>Last Year</option>
-            <option>All Time</option>
+          <select 
+            value={timeRange}
+            onChange={(e) => setTimeRange(e.target.value as any)}
+            className="bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="6months">Last 6 Months</option>
+            <option value="1year">Last Year</option>
+            <option value="all">All Time</option>
           </select>
-          <button className="btn-secondary flex items-center gap-2">
+          <select 
+            value={avgPeriod}
+            onChange={(e) => setAvgPeriod(e.target.value as any)}
+            className="bg-[var(--glass-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm"
+          >
+            <option value="daily">Daily Avg</option>
+            <option value="weekly">Weekly Avg</option>
+            <option value="monthly">Monthly Avg</option>
+            <option value="yearly">Yearly Avg</option>
+          </select>
+          <button 
+            onClick={handleExportReport}
+            className="btn-secondary flex items-center gap-2"
+          >
             <Download className="w-4 h-4" />
             Export Report
           </button>

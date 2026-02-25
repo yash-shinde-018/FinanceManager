@@ -154,7 +154,7 @@ export default function FinanceChatbot() {
                         initial={{ opacity: 0, y: 20, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 20, scale: 0.95 }}
-                        className="fixed bottom-6 right-6 z-50 w-96 h-[600px] card-glass rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                        className="fixed bottom-6 right-6 z-50 w-96 h-[600px] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
                     >
                         {/* Header */}
                         <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white flex items-center justify-between">
@@ -225,8 +225,8 @@ export default function FinanceChatbot() {
                                         className={cn(
                                             'max-w-[80%] p-3 rounded-2xl',
                                             message.role === 'user'
-                                                ? 'bg-indigo-500 text-white rounded-br-none'
-                                                : 'bg-[var(--glass-bg)] rounded-bl-none'
+                                                ? 'bg-gray-800 text-white rounded-br-none'
+                                                : 'bg-gray-700 text-gray-100 rounded-bl-none'
                                         )}
                                     >
                                         <p className="text-sm whitespace-pre-wrap">{message.content}</p>
@@ -254,7 +254,7 @@ export default function FinanceChatbot() {
                                     <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center">
                                         <Bot className="w-5 h-5 text-indigo-400" />
                                     </div>
-                                    <div className="bg-[var(--glass-bg)] p-3 rounded-2xl rounded-bl-none">
+                                    <div className="bg-gray-700 p-3 rounded-2xl rounded-bl-none">
                                         <Loader2 className="w-5 h-5 animate-spin text-indigo-400" />
                                     </div>
                                 </motion.div>

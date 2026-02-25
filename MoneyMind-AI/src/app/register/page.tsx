@@ -70,14 +70,14 @@ export default function RegisterPage() {
     setError('');
     
     try {
-      const success = await registerUser(data.name, data.email, data.password);
-      if (success) {
+      const result = await registerUser(data.name, data.email, data.password);
+      if (result.success) {
         setStep(2);
         setTimeout(() => {
-          router.push('/dashboard');
-        }, 2000);
+          router.push('/login');
+        }, 5000);
       } else {
-        setError('Registration failed. Please try again.');
+        setError(result.error || 'Registration failed. Please try again.');
       }
     } catch {
       setError('An error occurred. Please try again.');
@@ -101,10 +101,16 @@ export default function RegisterPage() {
             <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 className="w-8 h-8 text-emerald-400" />
             </div>
-            <h1 className="text-2xl font-bold mb-2">Welcome Aboard!</h1>
+            <h1 className="text-2xl font-bold mb-2">Check Your Email!</h1>
             <p className="text-[var(--muted-text)] mb-6">
-              Your account has been created successfully. Redirecting to your dashboard...
+              A verification email has been sent to your email address. Please check your inbox and click the verification link to activate your account.
             </p>
+            <p className="text-sm text-[var(--muted-text)] mb-4">
+              Redirecting to login page in 5 seconds...
+            </p>
+            <Link href="/login" className="text-indigo-400 hover:text-indigo-300 font-medium">
+              Go to Login
+            </Link>
             <div className="w-full h-1 bg-[var(--glass-bg)] rounded-full overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
@@ -169,7 +175,7 @@ export default function RegisterPage() {
                 <input
                   {...register('name')}
                   type="text"
-                  placeholder="John Doe"
+                  placeholder="Rahul Sharma"
                   className="input-premium input-with-left-icon"
                 />
               </div>
@@ -186,7 +192,7 @@ export default function RegisterPage() {
                 <input
                   {...register('email')}
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="rahul@email.com"
                   className="input-premium input-with-left-icon"
                 />
               </div>

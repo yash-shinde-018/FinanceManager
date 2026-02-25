@@ -12,12 +12,20 @@ import {
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
-  Plus
+  Plus,
+  Edit3,
+  Trash2,
+  AlertOctagon,
+  CheckCircle2,
+  X,
+  Eye
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AddTransactionModal from '@/components/dashboard/AddTransactionModal';
+import AnomalyReviewModal from '@/components/dashboard/AnomalyReviewModal';
 import type { Transaction } from '@/types';
 import { listTransactions, type TransactionRow } from '@/lib/db/transactions';
+import { createClient } from '@/lib/supabase/client';
 
 const categories = ['All', 'Income', 'Food & Dining', 'Shopping', 'Entertainment', 'Transportation', 'Housing', 'Utilities', 'Investment'];
 
@@ -50,6 +58,9 @@ export default function TransactionsPage() {
   const [selectedType, setSelectedType] = useState<'all' | 'income' | 'expense'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [showAnomalyModal, setShowAnomalyModal] = useState(false);
   const itemsPerPage = 10;
 
   const reload = async () => {
@@ -68,6 +79,83 @@ export default function TransactionsPage() {
       isAnomaly: t.is_anomaly,
     }));
     setTransactions(mapped);
+  };
+
+  // Handle transaction actions dropdown
+  const handleActionClick = (transactionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setActiveDropdown(activeDropdown === transactionId ? null : transactionId);
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setActiveDropdown(null);
+    if (activeDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [activeDropdown]);
+
+  // Toggle anomaly status
+  const handleToggleAnomaly = async (transaction: Transaction) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('transactions')
+      .update({ is_anomaly: !transaction.isAnomaly })
+      .eq('id', transaction.id);
+
+    if (error) {
+      console.error('Error updating anomaly status:', error);
+      alert('Failed to update anomaly status');
+      return;
+    }
+
+    // Update local state
+    setTransactions(prev => prev.map(t => 
+      t.id === transaction.id ? { ...t, isAnomaly: !t.isAnomaly } : t
+    ));
+    setActiveDropdown(null);
+  };
+
+  // Open anomaly review modal
+  const handleReviewAnomaly = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    setShowAnomalyModal(true);
+    setActiveDropdown(null);
+  };
+
+  // Handle anomaly review confirmation
+  const handleAnomalyConfirm = async (isActuallyAnomaly: boolean, notes?: string) => {
+    if (!selectedTransaction) return;
+
+    const { saveAnomalyFeedback } = await import('@/lib/db/ml-transactions');
+    try {
+      await saveAnomalyFeedback(
+        selectedTransaction.id,
+        isActuallyAnomaly,
+        selectedTransaction.isAnomaly,
+        0.8,
+        notes
+      );
+
+      // Update the transaction's anomaly status
+      const supabase = createClient();
+      await supabase
+        .from('transactions')
+        .update({ is_anomaly: isActuallyAnomaly })
+        .eq('id', selectedTransaction.id);
+
+      // Update local state
+      setTransactions(prev => prev.map(t => 
+        t.id === selectedTransaction.id ? { ...t, isAnomaly: isActuallyAnomaly } : t
+      ));
+
+      setShowAnomalyModal(false);
+      setSelectedTransaction(null);
+    } catch (error) {
+      console.error('Error saving anomaly feedback:', error);
+      alert('Failed to save feedback');
+    }
   };
 
   useEffect(() => {
@@ -96,6 +184,46 @@ export default function TransactionsPage() {
     currentPage * itemsPerPage
   );
 
+  // Export transactions to Excel
+  const handleExport = () => {
+    if (filteredTransactions.length === 0) {
+      alert('No transactions to export');
+      return;
+    }
+
+    // Get current date for filename
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+    
+    // Create CSV content (Excel can open CSV files without warnings)
+    const headers = ['Description', 'Category', 'Type', 'Amount (INR)', 'Date', 'Payment Method', 'Status', 'Merchant'];
+    
+    const csvContent = [
+      headers.join(','),
+      ...filteredTransactions.map(t => [
+        `"${t.description.replace(/"/g, '""')}"`,
+        `"${t.category}"`,
+        t.type,
+        t.type === 'income' ? t.amount : -t.amount,
+        t.date.toISOString().split('T')[0],
+        `"${t.paymentMethod}"`,
+        t.status,
+        `"${t.merchant || ''}"`
+      ].join(','))
+    ].join('\n');
+
+    // Create and download the file as CSV (Excel opens CSV without warnings)
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions_${dateStr}_${timeStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -107,9 +235,12 @@ export default function TransactionsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="btn-secondary flex items-center gap-2">
+          <button 
+            onClick={handleExport}
+            className="btn-secondary flex items-center gap-2"
+          >
             <Download className="w-4 h-4" />
-            Export
+            Export CSV
           </button>
           <button 
             onClick={() => setShowAddModal(true)}
@@ -132,7 +263,7 @@ export default function TransactionsPage() {
               placeholder="Search transactions..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="input-premium pl-10 w-full"
+              className="input-premium input-with-left-icon w-full"
             />
           </div>
 
@@ -250,10 +381,56 @@ export default function TransactionsPage() {
                       {transaction.status}
                     </span>
                   </td>
-                  <td className="py-4 px-4 text-center">
-                    <button className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-[var(--glass-bg)] transition-all">
-                      <MoreHorizontal className="w-4 h-4 text-[var(--muted-text)]" />
-                    </button>
+                  <td className="py-4 px-4 text-center relative">
+                    <div className="relative">
+                      <button 
+                        onClick={(e) => handleActionClick(transaction.id, e)}
+                        className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-[var(--glass-bg)] transition-all"
+                      >
+                        <MoreHorizontal className="w-4 h-4 text-[var(--muted-text)]" />
+                      </button>
+                      
+                      {/* Dropdown Menu */}
+                      {activeDropdown === transaction.id && (
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-[#1a1a2e] border border-[var(--glass-border)] rounded-xl shadow-2xl z-50 overflow-hidden">
+                          {transaction.isAnomaly && (
+                            <>
+                              <button
+                                onClick={() => handleReviewAnomaly(transaction)}
+                                className="w-full px-4 py-3 text-left text-sm hover:bg-[#252545] transition-colors flex items-center gap-2 text-amber-400"
+                              >
+                                <AlertTriangle className="w-4 h-4" />
+                                Review Anomaly
+                              </button>
+                              <button
+                                onClick={() => handleToggleAnomaly(transaction)}
+                                className="w-full px-4 py-3 text-left text-sm hover:bg-[#252545] transition-colors flex items-center gap-2 text-emerald-400"
+                              >
+                                <CheckCircle2 className="w-4 h-4" />
+                                Mark as Normal
+                              </button>
+                            </>
+                          )}
+                          {!transaction.isAnomaly && (
+                            <button
+                              onClick={() => handleToggleAnomaly(transaction)}
+                              className="w-full px-4 py-3 text-left text-sm hover:bg-[#252545] transition-colors flex items-center gap-2 text-amber-400"
+                            >
+                              <AlertOctagon className="w-4 h-4" />
+                              Mark as Anomaly
+                            </button>
+                          )}
+                          <div className="border-t border-[var(--glass-border)]" />
+                          <button
+                            onClick={() => setActiveDropdown(null)}
+                            className="w-full px-4 py-3 text-left text-sm hover:bg-[#252545] transition-colors flex items-center gap-2 text-[var(--muted-text)]"
+                          >
+                            <X className="w-4 h-4" />
+                            Cancel
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </motion.tr>
               ))}
@@ -305,6 +482,27 @@ export default function TransactionsPage() {
           setShowAddModal(false);
           reload();
         }} />
+      )}
+
+      {/* Anomaly Review Modal */}
+      {showAnomalyModal && selectedTransaction && (
+        <AnomalyReviewModal
+          transaction={{
+            id: selectedTransaction.id,
+            description: selectedTransaction.description,
+            amount: selectedTransaction.amount,
+            type: selectedTransaction.type,
+            category: selectedTransaction.category,
+            occurred_at: selectedTransaction.date.toISOString(),
+            is_anomaly: selectedTransaction.isAnomaly,
+          }}
+          confidence={0.8}
+          onClose={() => {
+            setShowAnomalyModal(false);
+            setSelectedTransaction(null);
+          }}
+          onConfirm={handleAnomalyConfirm}
+        />
       )}
     </div>
   );

@@ -35,7 +35,7 @@ export default function DashboardLayout({
       <motion.main
         initial={false}
         animate={{
-          marginLeft: isCollapsed ? 80 : 280,
+          marginLeft: isCollapsed ? 88 : 280,
         }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className="min-h-screen"
@@ -44,7 +44,7 @@ export default function DashboardLayout({
 
         <div className={cn(
           'p-6 transition-all duration-300',
-          'pt-24' // Space for header
+          'pt-24' // Space for floating header
         )}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -60,9 +60,6 @@ export default function DashboardLayout({
       {showOnboarding && (
         <OnboardingWalkthrough onClose={() => setShowOnboarding(false)} />
       )}
-
-      {/* Spending Alerts */}
-      <SpendingAlerts />
 
       {/* AI Finance Chatbot */}
       <FinanceChatbot />

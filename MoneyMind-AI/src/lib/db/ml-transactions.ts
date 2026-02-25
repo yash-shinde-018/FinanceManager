@@ -8,6 +8,7 @@ export async function createTransactionWithML(transaction: {
     date: Date;
     paymentMethod?: string;
     merchant?: string;
+    accountId?: string;
 }) {
     const supabase = createClient();
     const {
@@ -46,6 +47,7 @@ export async function createTransactionWithML(transaction: {
         .from('transactions')
         .insert({
             user_id: user.id,
+            account_id: transaction.accountId ?? null,
             description: transaction.description,
             amount: Math.abs(transaction.amount),
             type,
@@ -72,6 +74,51 @@ export async function createTransactionWithML(transaction: {
     }
 
     return { ...data, confidence };
+}
+
+export async function saveAnomalyFeedback(
+    transactionId: string,
+    isActuallyAnomaly: boolean,
+    originalPrediction: boolean,
+    confidenceScore: number,
+    userNotes?: string
+) {
+    const supabase = createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) throw new Error('Not authenticated');
+
+    // Save feedback
+    const { error } = await supabase
+        .from('anomaly_feedback')
+        .insert({
+            transaction_id: transactionId,
+            user_id: user.id,
+            is_actually_anomaly: isActuallyAnomaly,
+            original_ml_prediction: originalPrediction,
+            confidence_score: confidenceScore,
+            user_notes: userNotes || null,
+        });
+
+    if (error) {
+        console.error('Error saving anomaly feedback:', error);
+        throw error;
+    }
+
+    // Update transaction's is_anomaly flag based on user feedback
+    const { error: updateError } = await supabase
+        .from('transactions')
+        .update({ is_anomaly: isActuallyAnomaly })
+        .eq('id', transactionId);
+
+    if (updateError) {
+        console.error('Error updating transaction:', updateError);
+        throw updateError;
+    }
+
+    return { success: true };
 }
 
 export async function batchImportTransactionsWithML(transactions: Array<{

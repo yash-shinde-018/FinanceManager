@@ -10,8 +10,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
-  register: (name: string, email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (name: string, email: string, password: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   logout: () => void;
   updateUser: (userData: Partial<User>) => void;
 }
@@ -86,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
 
     try {
@@ -94,27 +94,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         console.error('Supabase login error', error);
+        // Check if error is due to email not being verified
+        if (error.message.toLowerCase().includes('email not confirmed') || 
+            error.message.toLowerCase().includes('email verification')) {
+          setIsLoading(false);
+          return { success: false, error: 'Please verify your email first. Check your inbox for the verification link.' };
+        }
         setIsLoading(false);
-        return false;
+        return { success: false, error: 'Invalid email or password. Please try again.' };
       }
 
       await ensureProfile();
       await seedWelcomeNotifications().catch(() => {}); // Don't block on notification seeding
       setIsLoading(false);
-      return true;
+      return { success: true };
     } catch (e) {
       console.error('Login error:', e);
       setIsLoading(false);
-      return false;
+      return { success: false, error: 'An error occurred. Please try again.' };
     }
   };
 
-  const register = async (name: string, email: string, password: string): Promise<boolean> => {
+  const register = async (name: string, email: string, password: string): Promise<{ success: boolean; message?: string; error?: string }> => {
     setIsLoading(true);
 
     try {
       const supabase = createClient();
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -126,7 +132,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         setIsLoading(false);
-        return false;
+        return { success: false, error: error.message };
+      }
+
+      // Check if email confirmation is required
+      if (data?.user?.identities && data.user.identities.length === 0) {
+        // User already exists
+        setIsLoading(false);
+        return { success: false, error: 'An account with this email already exists. Please log in.' };
       }
 
       localStorage.setItem('moneymind_onboarding', 'true');
@@ -134,11 +147,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await ensureProfile();
       await seedWelcomeNotifications().catch(() => {}); // Seed welcome notifications for new users
       setIsLoading(false);
-      return true;
+      
+      return { 
+        success: true, 
+        message: 'A verification email has been sent to your email address. Please check your inbox and verify your email before logging in.' 
+      };
     } catch (e) {
       console.error('Register error:', e);
       setIsLoading(false);
-      return false;
+      return { success: false, error: 'An error occurred during registration. Please try again.' };
     }
   };
 
