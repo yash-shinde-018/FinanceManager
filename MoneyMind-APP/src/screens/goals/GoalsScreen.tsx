@@ -37,6 +37,9 @@ export default function GoalsScreen({ navigation }: any) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [addFundsModalVisible, setAddFundsModalVisible] = useState(false);
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
+  const [addAmount, setAddAmount] = useState('');
   const [newGoal, setNewGoal] = useState({
     name: '',
     targetAmount: '',
@@ -61,6 +64,36 @@ export default function GoalsScreen({ navigation }: any) {
     } catch (error) {
       console.error('Error loading goals:', error);
     }
+  };
+
+  const openAddFundsModal = (goalId: string, isCompleted: boolean) => {
+    if (isCompleted) {
+      Toast.show({
+        type: 'info',
+        text1: 'Goal Completed',
+        text2: 'This goal is already completed!',
+      });
+      return;
+    }
+    setSelectedGoalId(goalId);
+    setAddAmount('');
+    setAddFundsModalVisible(true);
+  };
+
+  const handleAddFunds = async () => {
+    if (!selectedGoalId || !addAmount || parseFloat(addAmount) <= 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Invalid Amount',
+        text2: 'Please enter a valid amount',
+      });
+      return;
+    }
+
+    await addFunds(selectedGoalId, parseFloat(addAmount));
+    setAddFundsModalVisible(false);
+    setSelectedGoalId(null);
+    setAddAmount('');
   };
 
   const onRefresh = () => {
@@ -177,7 +210,7 @@ export default function GoalsScreen({ navigation }: any) {
           </View>
           <TouchableOpacity
             style={[styles.addButton, { backgroundColor: colors.primary }]}
-            onPress={() => addFunds(item.id, 1000)}
+            onPress={() => openAddFundsModal(item.id, isCompleted)}
           >
             <Ionicons name="add" size={20} color="#FFFFFF" />
           </TouchableOpacity>
@@ -332,6 +365,45 @@ export default function GoalsScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* Add Funds Modal */}
+      <Modal
+        visible={addFundsModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddFundsModalVisible(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.5)' }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Funds</Text>
+              <TouchableOpacity onPress={() => setAddFundsModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
+              Enter amount to add to your goal
+            </Text>
+
+            <TextInput
+              style={[styles.amountInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+              value={addAmount}
+              onChangeText={setAddAmount}
+              placeholder="Enter amount (₹)"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+            />
+
+            <TouchableOpacity
+              style={[styles.createGoalButton, { backgroundColor: colors.primary }]}
+              onPress={handleAddFunds}
+            >
+              <Text style={styles.createGoalButtonText}>Add Funds</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -456,6 +528,21 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  amountInput: {
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    borderWidth: 1,
+    marginBottom: 20,
   },
   modalInput: {
     height: 56,

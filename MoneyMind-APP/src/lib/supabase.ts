@@ -27,7 +27,20 @@ export type Transaction = {
   payment_method: string | null;
   status: string;
   is_anomaly: boolean;
+  anomaly_reviewed: boolean;
+  anomaly_notes: string | null;
   occurred_at: string;
+  created_at: string;
+};
+
+export type Notification = {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: 'anomaly' | 'goal' | 'budget' | 'system' | 'transaction';
+  is_read: boolean;
+  data: any | null;
   created_at: string;
 };
 

@@ -54,6 +54,37 @@ export default function AddTransactionScreen({ navigation }: any) {
       return;
     }
 
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      Toast.show({
+        type: 'error',
+        text1: 'Invalid Amount',
+        text2: 'Please enter a valid positive amount',
+      });
+      return;
+    }
+
+    // Check if expense would make balance negative
+    if (type === 'expense') {
+      const { data: transactions } = await supabase
+        .from('transactions')
+        .select('amount, type')
+        .eq('user_id', user?.id);
+      
+      const currentBalance = transactions?.reduce((sum, t) => {
+        return t.type === 'income' ? sum + Number(t.amount) : sum - Number(t.amount);
+      }, 0) || 0;
+
+      if (currentBalance < parsedAmount) {
+        Toast.show({
+          type: 'error',
+          text1: 'Insufficient Balance',
+          text2: `Your current balance is ₹${currentBalance.toFixed(2)}`,
+        });
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       // Get AI categorization if category not selected

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme, spacing, borderRadius, typography, shadows } from '../../theme/ThemeContext';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, Transaction } from '../../lib/supabase';
+import AnomalyReviewModal from '../../components/AnomalyReviewModal';
 
 export default function TransactionsScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
@@ -23,6 +24,9 @@ export default function TransactionsScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [anomalyModalVisible, setAnomalyModalVisible] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [anomalyConfidence, setAnomalyConfidence] = useState(0);
 
   useEffect(() => {
     loadTransactions();
@@ -103,9 +107,38 @@ export default function TransactionsScreen({ navigation }: any) {
     return icons[category.toLowerCase()] || 'apps';
   };
 
+  const handleAnomalyPress = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    setAnomalyConfidence(0.85); // Default confidence - could be stored in DB
+    setAnomalyModalVisible(true);
+  };
+
+  const handleAnomalyConfirm = async (isActuallyAnomaly: boolean, notes?: string) => {
+    if (!selectedTransaction) return;
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({
+          is_anomaly: isActuallyAnomaly,
+          anomaly_reviewed: true,
+          anomaly_notes: notes || null,
+        })
+        .eq('id', selectedTransaction.id);
+
+      if (error) throw error;
+
+      // Reload transactions
+      loadTransactions();
+    } catch (error) {
+      console.error('Error updating anomaly status:', error);
+    }
+  };
+
   const renderTransaction = ({ item }: { item: Transaction }) => (
     <TouchableOpacity
       style={[styles.transactionItem, { backgroundColor: colors.card, ...shadows.small }]}
+      onPress={() => item.is_anomaly && handleAnomalyPress(item)}
     >
       <View
         style={[
@@ -126,6 +159,11 @@ export default function TransactionsScreen({ navigation }: any) {
         <Text style={[styles.transactionCategory, { color: colors.textMuted }]}>
           {item.category} • {formatDate(item.occurred_at)}
         </Text>
+        {item.is_anomaly && (
+          <Text style={[styles.anomalyText, { color: colors.warning }]}>
+            ⚠️ Tap to review anomaly
+          </Text>
+        )}
       </View>
       <View style={styles.amountContainer}>
         <Text
@@ -221,6 +259,13 @@ export default function TransactionsScreen({ navigation }: any) {
           </View>
         )}
       />
+      <AnomalyReviewModal
+        visible={anomalyModalVisible}
+        transaction={selectedTransaction}
+        confidence={anomalyConfidence}
+        onClose={() => setAnomalyModalVisible(false)}
+        onConfirm={handleAnomalyConfirm}
+      />
     </SafeAreaView>
   );
 }
@@ -313,6 +358,11 @@ const styles = StyleSheet.create({
   transactionAmount: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  anomalyText: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
   },
   emptyContainer: {
     alignItems: 'center',

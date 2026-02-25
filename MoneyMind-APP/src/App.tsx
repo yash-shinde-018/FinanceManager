@@ -3,10 +3,8 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, ActivityIndicator } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { Ionicons } from '@expo/vector-icons';
 
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import { AuthProvider, useAuth } from './hooks/useAuth';
@@ -23,55 +21,12 @@ import AnalyticsScreen from './screens/analytics/AnalyticsScreen';
 import ProfileScreen from './screens/profile/ProfileScreen';
 import InsightsScreen from './screens/insights/InsightsScreen';
 import AccountsScreen from './screens/accounts/AccountsScreen';
+import NotificationsScreen from './screens/notifications/NotificationsScreen';
+import BudgetScreen from './screens/budget/BudgetScreen';
+import FinanceChatbot from './components/FinanceChatbot';
+import SidebarNavigator from './components/SidebarNavigator';
 
 const Stack = createStackNavigator();
-const Tab = createBottomTabNavigator();
-
-function TabNavigator() {
-  const { colors } = useTheme();
-
-  return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = 'home';
-
-          if (route.name === 'Dashboard') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Transactions') {
-            iconName = focused ? 'wallet' : 'wallet-outline';
-          } else if (route.name === 'Insights') {
-            iconName = focused ? 'sparkles' : 'sparkles-outline';
-          } else if (route.name === 'Goals') {
-            iconName = focused ? 'flag' : 'flag-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textSecondary,
-        tabBarStyle: {
-          backgroundColor: colors.card,
-          borderTopWidth: 0,
-          elevation: 8,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 4,
-        },
-        headerShown: false,
-      })}
-    >
-      <Tab.Screen name="Dashboard" component={DashboardScreen} />
-      <Tab.Screen name="Transactions" component={TransactionsScreen} />
-      <Tab.Screen name="Insights" component={InsightsScreen} />
-      <Tab.Screen name="Goals" component={GoalsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
-  );
-}
 
 function Navigation() {
   const { user, loading } = useAuth();
@@ -82,7 +37,6 @@ function Navigation() {
   }, []);
 
   const checkOnboardingStatus = async () => {
-    // In a real app, you'd check AsyncStorage
     setHasCompletedOnboarding(false);
   };
 
@@ -99,7 +53,7 @@ function Navigation() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           <>
-            <Stack.Screen name="Main" component={TabNavigator} />
+            <Stack.Screen name="Main" component={SidebarNavigator} />
             <Stack.Screen 
               name="AddTransaction" 
               component={AddTransactionScreen}
@@ -108,9 +62,11 @@ function Navigation() {
                 animationEnabled: true,
               }}
             />
+            <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} />
             <Stack.Screen name="Accounts" component={AccountsScreen} />
-            <Stack.Screen name="Investments" component={InvestmentsScreen} />
             <Stack.Screen name="Analytics" component={AnalyticsScreen} />
+            <Stack.Screen name="Insights" component={InsightsScreen} />
           </>
         ) : !hasCompletedOnboarding ? (
           <>
@@ -131,12 +87,14 @@ function Navigation() {
 
 function AppContent() {
   const { isDark } = useTheme();
+  const { user } = useAuth();
 
   return (
     <SafeAreaProvider>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Navigation />
       <Toast />
+      {user && <FinanceChatbot />}
     </SafeAreaProvider>
   );
 }

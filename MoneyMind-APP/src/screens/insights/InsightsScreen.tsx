@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, spacing, borderRadius, typography, shadows } from '../../theme/ThemeContext';
+import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { mlClient } from '../../lib/ml';
 
@@ -27,6 +28,7 @@ interface Insight {
 
 export default function InsightsScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [activeFilter, setActiveFilter] = useState<'all' | 'savings' | 'overspending' | 'anomaly'>('all');
@@ -40,10 +42,11 @@ export default function InsightsScreen({ navigation }: any) {
       // Get ML insights
       const mlInsights = await mlClient.getInsights();
       
-      // Get anomalous transactions
+      // Get anomalous transactions - filter by user_id
       const { data: anomalies } = await supabase
         .from('transactions')
         .select('*')
+        .eq('user_id', user?.id)
         .eq('is_anomaly', true)
         .order('occurred_at', { ascending: false });
 
