@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Toast from 'react-native-toast-message';
 import { useTheme, spacing, borderRadius, typography, shadows } from '../../theme/ThemeContext';
+import { useAuth } from '../../hooks/useAuth';
 import { supabase, Goal } from '../../lib/supabase';
 
 const goalIcons = [
@@ -32,6 +33,7 @@ const goalColors = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4
 
 export default function GoalsScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -51,6 +53,7 @@ export default function GoalsScreen({ navigation }: any) {
       const { data, error } = await supabase
         .from('goals')
         .select('*')
+        .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -77,6 +80,7 @@ export default function GoalsScreen({ navigation }: any) {
 
     try {
       const { error } = await supabase.from('goals').insert({
+        user_id: user?.id,
         name: newGoal.name,
         target_amount: parseFloat(newGoal.targetAmount),
         current_amount: 0,

@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Toast from 'react-native-toast-message';
 import { useTheme, spacing, borderRadius, typography, shadows } from '../../theme/ThemeContext';
+import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { mlClient } from '../../lib/ml';
 
@@ -35,6 +36,7 @@ const categories = [
 
 export default function AddTransactionScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -76,14 +78,23 @@ export default function AddTransactionScreen({ navigation }: any) {
         }
       }
 
-      const { error } = await supabase.from('transactions').insert({
+      console.log('User ID:', user?.id);
+      console.log('Inserting transaction with user_id:', user?.id);
+      
+      const { error, data } = await supabase.from('transactions').insert({
+        user_id: user?.id,
         amount: parseFloat(amount),
         type,
         category: finalCategory,
         description,
+        merchant: null,
+        payment_method: null,
+        status: 'completed',
         is_anomaly: isAnomaly,
         occurred_at: new Date().toISOString(),
-      });
+      }).select();
+      
+      console.log('Insert result:', { error, data });
 
       if (error) throw error;
 

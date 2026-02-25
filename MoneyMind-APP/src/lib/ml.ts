@@ -1,4 +1,6 @@
-const ML_API_URL = 'http://localhost:8000';
+import { ML_API_URL } from '@env';
+
+const DEFAULT_ML_API_URL = ML_API_URL || 'http://localhost:8000';
 
 export interface MLTransaction {
   date: string;
@@ -38,7 +40,7 @@ export interface Insight {
 class MLClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = ML_API_URL) {
+  constructor(baseUrl: string = DEFAULT_ML_API_URL) {
     this.baseUrl = baseUrl;
   }
 

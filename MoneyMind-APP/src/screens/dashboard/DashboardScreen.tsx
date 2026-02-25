@@ -59,6 +59,7 @@ export default function DashboardScreen({ navigation }: any) {
       const { data: transactions } = await supabase
         .from('transactions')
         .select('*')
+        .eq('user_id', user?.id)
         .order('occurred_at', { ascending: false });
 
       let totalIncome = 0;

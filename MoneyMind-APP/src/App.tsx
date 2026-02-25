@@ -97,18 +97,7 @@ function Navigation() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!hasCompletedOnboarding ? (
-          <>
-            <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Signup" component={SignupScreen} />
-          </>
-        ) : !user ? (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Signup" component={SignupScreen} />
-          </>
-        ) : (
+        {user ? (
           <>
             <Stack.Screen name="Main" component={TabNavigator} />
             <Stack.Screen 
@@ -122,6 +111,17 @@ function Navigation() {
             <Stack.Screen name="Accounts" component={AccountsScreen} />
             <Stack.Screen name="Investments" component={InvestmentsScreen} />
             <Stack.Screen name="Analytics" component={AnalyticsScreen} />
+          </>
+        ) : !hasCompletedOnboarding ? (
+          <>
+            <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Signup" component={SignupScreen} />
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Signup" component={SignupScreen} />
           </>
         )}
       </Stack.Navigator>

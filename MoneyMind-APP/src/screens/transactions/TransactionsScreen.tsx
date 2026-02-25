@@ -12,10 +12,12 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, spacing, borderRadius, typography, shadows } from '../../theme/ThemeContext';
+import { useAuth } from '../../hooks/useAuth';
 import { supabase, Transaction } from '../../lib/supabase';
 
 export default function TransactionsScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,6 +37,7 @@ export default function TransactionsScreen({ navigation }: any) {
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
+        .eq('user_id', user?.id)
         .order('occurred_at', { ascending: false });
 
       if (error) throw error;
