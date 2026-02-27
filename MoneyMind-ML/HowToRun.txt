@@ -1,5 +1,0 @@
-cd MoneyMind-ML
-pip install -r requirements.txt
-python data_generator.py
-python train_all_models.py
-python ml_api_v2.py

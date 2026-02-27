@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme, spacing, borderRadius, typography, shadows } from '../../theme/ThemeContext';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase, Transaction } from '../../lib/supabase';
+import { mlClient } from '../../lib/ml';
 import AnomalyReviewModal from '../../components/AnomalyReviewModal';
 
 const CATEGORIES = [
@@ -48,6 +49,8 @@ export default function TransactionsScreen({ navigation, route }: any) {
   
   // Add Transaction Modal State
   const [addModalVisible, setAddModalVisible] = useState(false);
+  const [aiCategory, setAiCategory] = useState<string | null>(null);
+  const [aiConfidence, setAiConfidence] = useState(0);
   const [newTransaction, setNewTransaction] = useState({
     description: '',
     amount: '',
@@ -149,7 +152,6 @@ export default function TransactionsScreen({ navigation, route }: any) {
         .from('transactions')
         .update({
           is_anomaly: isActuallyAnomaly,
-          anomaly_reviewed: true,
           anomaly_notes: notes || null,
         })
         .eq('id', selectedTransaction.id);
@@ -170,15 +172,48 @@ export default function TransactionsScreen({ navigation, route }: any) {
     }
 
     try {
+      // AI categorization if not manually selected
+      let finalCategory = newTransaction.category;
+
+      // Only auto-categorize if user hasn't manually changed category from default
+      if (newTransaction.category === 'food' && newTransaction.description.length > 3) {
+        const mlResult = await mlClient.categorizeTransaction({
+          date: newTransaction.occurred_at,
+          description: newTransaction.description,
+          amount: parseFloat(newTransaction.amount),
+        });
+
+        if (mlResult) {
+          finalCategory = mlResult.category;
+          setAiCategory(mlResult.category);
+          setAiConfidence(mlResult.confidence);
+        }
+      }
+
+      // ALWAYS detect fraud/anomaly for EVERY transaction
+      let isAnomaly = false;
+      const fraudResult = await mlClient.detectFraud({
+        id: Date.now(),
+        date: newTransaction.occurred_at,
+        description: newTransaction.description,
+        amount: parseFloat(newTransaction.amount), // Positive amount
+        transaction_type: newTransaction.type === 'expense' ? 'Debit' : 'Credit',
+        category: finalCategory || 'other',
+      });
+
+      if (fraudResult) {
+        isAnomaly = fraudResult.status === 'Suspicious';
+        console.log('Fraud detection result:', fraudResult);
+      }
+
       const { error } = await supabase.from('transactions').insert({
         user_id: user?.id,
         description: newTransaction.description,
         amount: parseFloat(newTransaction.amount),
         type: newTransaction.type,
-        category: newTransaction.category,
+        category: finalCategory,
         occurred_at: newTransaction.occurred_at,
-        is_anomaly: false,
-        anomaly_reviewed: true,
+        is_anomaly: isAnomaly,
       });
 
       if (error) throw error;
@@ -191,6 +226,8 @@ export default function TransactionsScreen({ navigation, route }: any) {
         category: 'food',
         occurred_at: new Date().toISOString().split('T')[0],
       });
+      setAiCategory(null);
+      setAiConfidence(0);
       loadTransactions();
     } catch (error) {
       console.error('Error adding transaction:', error);
@@ -423,7 +460,9 @@ export default function TransactionsScreen({ navigation, route }: any) {
                 placeholderTextColor={colors.textMuted}
               />
 
-              <Text style={[styles.label, { color: colors.text }]}>Category</Text>
+              <Text style={[styles.label, { color: colors.text }]}>
+                Category {aiCategory && `(AI: ${aiCategory} ${(aiConfidence * 100).toFixed(0)}%)`}
+              </Text>
               <View style={styles.categoryGrid}>
                 {CATEGORIES.map((cat) => (
                   <TouchableOpacity

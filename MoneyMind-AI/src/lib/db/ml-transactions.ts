@@ -29,14 +29,27 @@ export async function createTransactionWithML(transaction: {
     let confidence = 0;
 
     try {
-        const result = await mlClient.categorizeTransaction(mlTransaction);
-        if (result) {
-            category = result.category;
-            isAnomaly = result.is_anomaly;
-            confidence = result.confidence;
+        // Step 1: Categorize the transaction
+        const categoryResult = await mlClient.categorizeTransaction(mlTransaction);
+        if (categoryResult) {
+            category = categoryResult.category;
+            confidence = categoryResult.confidence;
+        }
+
+        // Step 2: Detect fraud/anomaly using the categorized transaction
+        const fraudResult = await mlClient.detectFraud({
+            ...mlTransaction,
+            id: Date.now(), // Use timestamp as temporary ID
+            category,
+            transaction_type: transaction.amount > 0 ? 'Credit' : 'Debit',
+        });
+
+        if (fraudResult) {
+            isAnomaly = fraudResult.status === 'Suspicious';
+            console.log('Fraud detection result:', fraudResult);
         }
     } catch (error) {
-        console.error('ML categorization failed, using default:', error);
+        console.error('ML processing failed, using defaults:', error);
     }
 
     // Determine transaction type
@@ -195,12 +208,12 @@ export async function getMLInsights() {
     }
 }
 
-export async function getSpendingForecast(days: number = 30) {
+export async function getSpendingForecast(monthlyData: any[]) {
     try {
-        const forecast = await mlClient.getForecast(days);
+        const forecast = await mlClient.predictSpending(monthlyData);
         return forecast;
     } catch (error) {
-        console.error('Error fetching forecast:', error);
+        console.error('Error fetching spending forecast:', error);
         return null;
     }
 }

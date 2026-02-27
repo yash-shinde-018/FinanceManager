@@ -87,9 +87,8 @@ export default function AddTransactionScreen({ navigation }: any) {
 
     setLoading(true);
     try {
-      // Get AI categorization if category not selected
+      // Step 1: Get AI categorization if category not selected
       let finalCategory = category;
-      let isAnomaly = false;
       let confidence = 0;
 
       if (!finalCategory) {
@@ -101,12 +100,29 @@ export default function AddTransactionScreen({ navigation }: any) {
 
         if (mlResult) {
           finalCategory = mlResult.category;
-          isAnomaly = mlResult.is_anomaly;
           confidence = mlResult.confidence;
           setAiSuggestion(finalCategory);
         } else {
           finalCategory = 'other';
         }
+      }
+
+      // Step 2: ALWAYS detect fraud/anomaly for EVERY transaction
+      let isAnomaly = false;
+      const parsedAmount = parseFloat(amount);
+      const signedAmount = type === 'expense' ? -parsedAmount : parsedAmount;
+      
+      const fraudResult = await mlClient.detectFraud({
+        id: Date.now(),
+        date: new Date().toISOString(),
+        description,
+        amount: signedAmount,  // Negative for expenses, positive for income
+        category: finalCategory || 'other',
+      });
+
+      if (fraudResult) {
+        isAnomaly = fraudResult.status === 'Suspicious';
+        console.log('Fraud detection result:', fraudResult);
       }
 
       console.log('User ID:', user?.id);
