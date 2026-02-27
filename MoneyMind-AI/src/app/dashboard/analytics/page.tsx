@@ -81,10 +81,11 @@ export default function AnalyticsPage() {
         const prevThirtyDaysAgo = new Date();
         prevThirtyDaysAgo.setDate(prevThirtyDaysAgo.getDate() - 60);
 
-        // Fetch all transactions for last 6 months
+        // Fetch all transactions for last 6 months (filtered by user)
         const { data: transactions, error } = await supabase
           .from('transactions')
           .select('amount, type, occurred_at, category')
+          .eq('user_id', user.id)
           .gte('occurred_at', sixMonthsAgo.toISOString())
           .order('occurred_at', { ascending: true });
 
