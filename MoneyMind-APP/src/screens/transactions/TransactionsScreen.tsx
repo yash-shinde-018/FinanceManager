@@ -7,6 +7,10 @@ import {
   TouchableOpacity,
   RefreshControl,
   TextInput,
+  Modal,
+  ScrollView,
+  Alert,
+  Share,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,7 +20,21 @@ import { useAuth } from '../../hooks/useAuth';
 import { supabase, Transaction } from '../../lib/supabase';
 import AnomalyReviewModal from '../../components/AnomalyReviewModal';
 
-export default function TransactionsScreen({ navigation }: any) {
+const CATEGORIES = [
+  { value: 'food', label: 'Food & Dining', icon: 'restaurant' },
+  { value: 'transport', label: 'Transportation', icon: 'car' },
+  { value: 'shopping', label: 'Shopping', icon: 'cart' },
+  { value: 'entertainment', label: 'Entertainment', icon: 'film' },
+  { value: 'housing', label: 'Housing', icon: 'home' },
+  { value: 'utilities', label: 'Utilities', icon: 'flash' },
+  { value: 'healthcare', label: 'Healthcare', icon: 'medical' },
+  { value: 'education', label: 'Education', icon: 'school' },
+  { value: 'salary', label: 'Salary', icon: 'cash' },
+  { value: 'investment', label: 'Investment', icon: 'trending-up' },
+  { value: 'other', label: 'Other', icon: 'apps' },
+];
+
+export default function TransactionsScreen({ navigation, route }: any) {
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -27,6 +45,16 @@ export default function TransactionsScreen({ navigation }: any) {
   const [anomalyModalVisible, setAnomalyModalVisible] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [anomalyConfidence, setAnomalyConfidence] = useState(0);
+  
+  // Add Transaction Modal State
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [newTransaction, setNewTransaction] = useState({
+    description: '',
+    amount: '',
+    type: 'expense' as 'income' | 'expense',
+    category: 'food',
+    occurred_at: new Date().toISOString().split('T')[0],
+  });
 
   useEffect(() => {
     loadTransactions();
@@ -135,6 +163,64 @@ export default function TransactionsScreen({ navigation }: any) {
     }
   };
 
+  const handleAddTransaction = async () => {
+    if (!newTransaction.description || !newTransaction.amount) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('transactions').insert({
+        user_id: user?.id,
+        description: newTransaction.description,
+        amount: parseFloat(newTransaction.amount),
+        type: newTransaction.type,
+        category: newTransaction.category,
+        occurred_at: newTransaction.occurred_at,
+        is_anomaly: false,
+        anomaly_reviewed: true,
+      });
+
+      if (error) throw error;
+
+      setAddModalVisible(false);
+      setNewTransaction({
+        description: '',
+        amount: '',
+        type: 'expense',
+        category: 'food',
+        occurred_at: new Date().toISOString().split('T')[0],
+      });
+      loadTransactions();
+    } catch (error) {
+      console.error('Error adding transaction:', error);
+      alert('Failed to add transaction');
+    }
+  };
+
+  const handleExportData = async () => {
+    if (filteredTransactions.length === 0) {
+      Alert.alert('No Data', 'No transactions to export');
+      return;
+    }
+
+    // Create CSV content
+    const headers = 'Date,Description,Category,Type,Amount\n';
+    const rows = filteredTransactions.map(t => 
+      `${t.occurred_at},"${t.description}",${t.category},${t.type},${t.amount}`
+    ).join('\n');
+    const csvContent = headers + rows;
+
+    try {
+      await Share.share({
+        message: csvContent,
+        title: 'Transactions Export',
+      });
+    } catch (error) {
+      console.error('Error sharing:', error);
+    }
+  };
+
   const renderTransaction = ({ item }: { item: Transaction }) => (
     <TouchableOpacity
       style={[styles.transactionItem, { backgroundColor: colors.card, ...shadows.small }]}
@@ -186,19 +272,8 @@ export default function TransactionsScreen({ navigation }: any) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Transactions</Text>
-        <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: colors.primary }]}
-          onPress={() => navigation.navigate('AddTransaction')}
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
       {/* Search */}
-      <View style={[styles.searchContainer, { backgroundColor: colors.card }]}>
+      <View style={[styles.searchContainer, { backgroundColor: colors.card, marginTop: 12 }]}>
         <Ionicons name="search" size={20} color={colors.textMuted} />
         <TextInput
           style={[styles.searchInput, { color: colors.text }]}
@@ -235,6 +310,12 @@ export default function TransactionsScreen({ navigation }: any) {
             </Text>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={[styles.exportButton, { backgroundColor: colors.card }]}
+          onPress={handleExportData}
+        >
+          <Ionicons name="download-outline" size={20} color={colors.primary} />
+        </TouchableOpacity>
       </View>
 
       {/* Transactions List */}
@@ -266,6 +347,129 @@ export default function TransactionsScreen({ navigation }: any) {
         onClose={() => setAnomalyModalVisible(false)}
         onConfirm={handleAnomalyConfirm}
       />
+
+      {/* FAB - Add Transaction */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        onPress={() => setAddModalVisible(true)}
+      >
+        <Ionicons name="add" size={28} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      {/* Add Transaction Modal */}
+      <Modal
+        visible={addModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddModalVisible(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.5)' }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Add Transaction</Text>
+              <TouchableOpacity onPress={() => setAddModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.formContainer}>
+              {/* Type Selection */}
+              <Text style={[styles.label, { color: colors.text }]}>Type</Text>
+              <View style={styles.typeContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.typeButton,
+                    {
+                      backgroundColor: newTransaction.type === 'income' ? colors.income : colors.card,
+                      borderColor: newTransaction.type === 'income' ? colors.income : colors.border,
+                    },
+                  ]}
+                  onPress={() => setNewTransaction({ ...newTransaction, type: 'income' })}
+                >
+                  <Ionicons name="arrow-up" size={20} color={newTransaction.type === 'income' ? '#FFFFFF' : colors.text} />
+                  <Text style={[styles.typeText, { color: newTransaction.type === 'income' ? '#FFFFFF' : colors.text }]}>Income</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.typeButton,
+                    {
+                      backgroundColor: newTransaction.type === 'expense' ? colors.expense : colors.card,
+                      borderColor: newTransaction.type === 'expense' ? colors.expense : colors.border,
+                    },
+                  ]}
+                  onPress={() => setNewTransaction({ ...newTransaction, type: 'expense' })}
+                >
+                  <Ionicons name="arrow-down" size={20} color={newTransaction.type === 'expense' ? '#FFFFFF' : colors.text} />
+                  <Text style={[styles.typeText, { color: newTransaction.type === 'expense' ? '#FFFFFF' : colors.text }]}>Expense</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={[styles.label, { color: colors.text }]}>Description *</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                value={newTransaction.description}
+                onChangeText={(text) => setNewTransaction({ ...newTransaction, description: text })}
+                placeholder="e.g., Grocery shopping"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={[styles.label, { color: colors.text }]}>Amount *</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                value={newTransaction.amount}
+                onChangeText={(text) => setNewTransaction({ ...newTransaction, amount: text })}
+                keyboardType="numeric"
+                placeholder="0.00"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={[styles.label, { color: colors.text }]}>Category</Text>
+              <View style={styles.categoryGrid}>
+                {CATEGORIES.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.value}
+                    style={[
+                      styles.categoryItem,
+                      {
+                        backgroundColor: newTransaction.category === cat.value ? colors.primary : colors.card,
+                        borderColor: newTransaction.category === cat.value ? colors.primary : colors.border,
+                      },
+                    ]}
+                    onPress={() => setNewTransaction({ ...newTransaction, category: cat.value })}
+                  >
+                    <Ionicons
+                      name={cat.icon as any}
+                      size={18}
+                      color={newTransaction.category === cat.value ? '#FFFFFF' : colors.text}
+                    />
+                    <Text
+                      style={[
+                        styles.categoryItemText,
+                        { color: newTransaction.category === cat.value ? '#FFFFFF' : colors.text },
+                      ]}
+                    >
+                      {cat.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.label, { color: colors.text }]}>Date</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
+                value={newTransaction.occurred_at}
+                onChangeText={(text) => setNewTransaction({ ...newTransaction, occurred_at: text })}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <TouchableOpacity style={[styles.submitButton, { backgroundColor: colors.primary }]} onPress={handleAddTransaction}>
+                <Text style={styles.submitButtonText}>Add Transaction</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -273,24 +477,6 @@ export default function TransactionsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -311,11 +497,20 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 20,
     marginTop: 16,
+    alignItems: 'center',
   },
   filterButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
+  },
+  exportButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 'auto',
   },
   filterText: {
     fontSize: 14,
@@ -380,6 +575,102 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    height: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  formContainer: { padding: 20 },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 16,
+  },
+  typeContainer: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  typeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  typeText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  input: {
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    borderWidth: 1,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  categoryItemText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  submitButton: {
+    marginTop: 24,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  submitButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',

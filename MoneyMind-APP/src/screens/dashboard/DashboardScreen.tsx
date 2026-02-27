@@ -55,13 +55,22 @@ export default function DashboardScreen({ navigation }: any) {
     try {
       setLoading(true);
       
-      // Get total balance
+      // Get actual account balances (sum of all accounts for this user)
+      const { data: accounts } = await supabase
+        .from('accounts')
+        .select('balance')
+        .eq('user_id', user?.id)
+        .eq('status', 'active');
+
+      const totalBalance = accounts?.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0) || 0;
+
+      // Get transactions for monthly stats
       const { data: transactions } = await supabase
         .from('transactions')
         .select('*')
         .eq('user_id', user?.id)
         .order('occurred_at', { ascending: false });
-
+      
       let totalIncome = 0;
       let totalExpense = 0;
       let monthlyIncome = 0;
@@ -117,7 +126,6 @@ export default function DashboardScreen({ navigation }: any) {
       // Count anomalies
       const anomalyCount = transactions?.filter((t: any) => t.is_anomaly).length || 0;
 
-      const totalBalance = totalIncome - totalExpense;
       const savingsRate = monthlyIncome > 0 
         ? ((monthlyIncome - monthlyExpense) / monthlyIncome) * 100 
         : 0;
@@ -196,7 +204,7 @@ export default function DashboardScreen({ navigation }: any) {
         </View>
         <TouchableOpacity 
           style={[styles.addButton, { backgroundColor: colors.primary }]}
-          onPress={() => navigation.navigate('AddTransaction')}
+          onPress={() => navigation.navigate('Transactions', { addNew: true })}
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </TouchableOpacity>

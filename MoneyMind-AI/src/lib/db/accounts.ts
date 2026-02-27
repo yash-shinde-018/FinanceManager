@@ -16,9 +16,16 @@ export type AccountRow = {
 
 export async function listAccounts() {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error('Not authenticated');
+
   const { data, error } = await supabase
     .from('accounts')
     .select('*')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: false });
 
   if (error) throw error;

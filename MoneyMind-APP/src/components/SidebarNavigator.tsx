@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Modal,
   Animated,
   Dimensions,
   StatusBar as RNStatusBar,
@@ -15,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme/ThemeContext';
 import { useAuth } from '../hooks/useAuth';
-import Toast from 'react-native-toast-message';
 
 // Import all screens
 import DashboardScreen from '../screens/dashboard/DashboardScreen';
@@ -28,6 +26,7 @@ import AnalyticsScreen from '../screens/analytics/AnalyticsScreen';
 import InsightsScreen from '../screens/insights/InsightsScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
+import SettingsScreen from '../screens/settings/SettingsScreen';
 
 const { width } = Dimensions.get('window');
 
@@ -40,6 +39,8 @@ const menuItems = [
   { id: 'Investments', icon: 'trending-up-outline', label: 'Investments', component: InvestmentsScreen },
   { id: 'Accounts', icon: 'card-outline', label: 'Accounts', component: AccountsScreen },
   { id: 'Analytics', icon: 'bar-chart-outline', label: 'Analytics', component: AnalyticsScreen },
+  { id: 'Notifications', icon: 'notifications-outline', label: 'Notifications', component: NotificationsScreen },
+  { id: 'Settings', icon: 'settings-outline', label: 'Settings', component: SettingsScreen },
 ];
 
 export default function SidebarNavigator() {
@@ -47,7 +48,6 @@ export default function SidebarNavigator() {
   const { user, signOut } = useAuth();
   const [currentScreen, setCurrentScreen] = useState('Dashboard');
   const [sidebarVisible, setSidebarVisible] = useState(false);
-  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const slideAnim = useState(new Animated.Value(-width * 0.75))[0];
 
   const openSidebar = () => {
@@ -86,9 +86,7 @@ export default function SidebarNavigator() {
         <Text style={[styles.headerTitle, { color: colors.text }]}>
           {menuItems.find(item => item.id === currentScreen)?.label || 'MoneyMind'}
         </Text>
-        <TouchableOpacity onPress={() => setSettingsModalVisible(true)} style={styles.settingsButton}>
-          <Ionicons name="settings-outline" size={24} color={colors.text} />
-        </TouchableOpacity>
+        <View style={styles.hamburgerButton} />
       </View>
 
       {/* Main Content */}
@@ -102,9 +100,7 @@ export default function SidebarNavigator() {
           style={styles.overlay} 
           activeOpacity={1} 
           onPress={closeSidebar}
-        >
-          <View style={styles.overlayBackground} />
-        </TouchableOpacity>
+        />
       )}
 
       {/* Sidebar */}
@@ -162,16 +158,6 @@ export default function SidebarNavigator() {
 
           {/* Bottom Items */}
           <View style={styles.bottomContainer}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                closeSidebar();
-                setSettingsModalVisible(true);
-              }}
-            >
-              <Ionicons name="settings-outline" size={22} color={colors.text} />
-              <Text style={[styles.menuLabel, { color: colors.text }]}>Settings</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.menuItem} onPress={signOut}>
               <Ionicons name="log-out-outline" size={22} color={colors.error} />
               <Text style={[styles.menuLabel, { color: colors.error }]}>Logout</Text>
@@ -190,86 +176,6 @@ export default function SidebarNavigator() {
           </View>
         </View>
       </Animated.View>
-
-      {/* Settings Modal */}
-      <Modal
-        visible={settingsModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setSettingsModalVisible(false)}
-      >
-        <View style={[styles.modalContainer, { backgroundColor: colors.background + 'CC' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Settings</Text>
-              <TouchableOpacity onPress={() => setSettingsModalVisible(false)}>
-                <Ionicons name="close" size={28} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              {/* Profile Section */}
-              <View style={[styles.settingsSection, { backgroundColor: colors.card }]}>
-                <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>ACCOUNT</Text>
-                <TouchableOpacity
-                  style={styles.settingRow}
-                  onPress={() => {
-                    setSettingsModalVisible(false);
-                    setCurrentScreen('Dashboard');
-                  }}
-                >
-                  <View style={styles.settingLeft}>
-                    <Ionicons name="person-outline" size={22} color={colors.primary} />
-                    <Text style={[styles.settingLabel, { color: colors.text }]}>Profile</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.settingRow}
-                  onPress={() => {
-                    setSettingsModalVisible(false);
-                    // Navigate to notifications screen
-                  }}
-                >
-                  <View style={styles.settingLeft}>
-                    <Ionicons name="notifications-outline" size={22} color={colors.primary} />
-                    <Text style={[styles.settingLabel, { color: colors.text }]}>Notifications</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              {/* About Section */}
-              <View style={[styles.settingsSection, { backgroundColor: colors.card }]}>
-                <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>ABOUT</Text>
-                <TouchableOpacity
-                  style={styles.settingRow}
-                  onPress={() => Toast.show({ type: 'info', text1: 'MoneyMind AI v1.0.0' })}
-                >
-                  <View style={styles.settingLeft}>
-                    <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
-                    <Text style={[styles.settingLabel, { color: colors.text }]}>Version</Text>
-                  </View>
-                  <Text style={[styles.settingValue, { color: colors.textMuted }]}>1.0.0</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* Logout */}
-              <TouchableOpacity 
-                style={[styles.logoutButton, { backgroundColor: colors.error + '15' }]} 
-                onPress={() => {
-                  setSettingsModalVisible(false);
-                  signOut();
-                  Toast.show({ type: 'success', text1: 'Logged out successfully' });
-                }}
-              >
-                <Ionicons name="log-out-outline" size={22} color={colors.error} />
-                <Text style={[styles.logoutText, { color: colors.error }]}>Logout</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -285,7 +191,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    marginTop: RNStatusBar.currentHeight || 0,
   },
   hamburgerButton: {
     padding: 4,
@@ -308,9 +213,6 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
-  },
-  overlayBackground: {
-    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   sidebar: {
@@ -329,7 +231,7 @@ const styles = StyleSheet.create({
   },
   sidebarHeader: {
     padding: 20,
-    paddingTop: (RNStatusBar.currentHeight || 0) + 16,
+    paddingTop: 50,
   },
   logoContainer: {
     flexDirection: 'row',
@@ -392,80 +294,5 @@ const styles = StyleSheet.create({
   userEmail: {
     fontSize: 12,
     marginTop: 2,
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    height: '85%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'transparent',
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  modalBody: {
-    flex: 1,
-    padding: 16,
-  },
-  settingsSection: {
-    borderRadius: 16,
-    marginBottom: 16,
-    overflow: 'hidden',
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'transparent',
-  },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  settingLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  settingValue: {
-    fontSize: 14,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  logoutText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

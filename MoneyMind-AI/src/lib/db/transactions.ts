@@ -18,9 +18,16 @@ export type TransactionRow = {
 
 export async function listTransactions(limit = 100) {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error('Not authenticated');
+
   const { data, error } = await supabase
     .from('transactions')
     .select('*')
+    .eq('user_id', user.id)
     .order('occurred_at', { ascending: false })
     .limit(limit);
 

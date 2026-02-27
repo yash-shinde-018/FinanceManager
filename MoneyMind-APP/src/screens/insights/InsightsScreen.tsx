@@ -123,17 +123,8 @@ export default function InsightsScreen({ navigation }: any) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>AI Insights</Text>
-        <View style={[styles.aiBadge, { backgroundColor: colors.primary + '20' }]}>
-          <Ionicons name="sparkles" size={16} color={colors.primary} />
-          <Text style={[styles.aiText, { color: colors.primary }]}>AI Powered</Text>
-        </View>
-      </View>
-
       {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterContainer}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterContainer, { marginTop: 12 }]}>
         {(['all', 'savings', 'overspending', 'anomaly'] as const).map((filter) => (
           <TouchableOpacity
             key={filter}
@@ -232,29 +223,6 @@ export default function InsightsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  aiBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  aiText: {
-    fontSize: 12,
-    fontWeight: '600',
   },
   filterContainer: {
     paddingHorizontal: 20,

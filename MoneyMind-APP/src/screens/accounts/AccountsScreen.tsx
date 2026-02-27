@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useTheme, spacing, borderRadius, typography, shadows } from '../../theme/ThemeContext';
 import { supabase, Account } from '../../lib/supabase';
+import { useAuth } from '../../hooks/useAuth';
 
 const accountTypes = [
   { value: 'bank', label: 'Bank Account', icon: 'business' },
@@ -25,6 +26,7 @@ const accountTypes = [
 
 export default function AccountsScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -44,6 +46,7 @@ export default function AccountsScreen({ navigation }: any) {
       const { data, error } = await supabase
         .from('accounts')
         .select('*')
+        .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -70,6 +73,7 @@ export default function AccountsScreen({ navigation }: any) {
 
     try {
       const { error } = await supabase.from('accounts').insert({
+        user_id: user?.id,
         name: newAccount.name,
         type: newAccount.type,
         institution: newAccount.institution || null,
@@ -151,22 +155,8 @@ export default function AccountsScreen({ navigation }: any) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={28} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Accounts</Text>
-        <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: colors.primary }]}
-          onPress={() => setModalVisible(true)}
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
       {/* Total Balance */}
-      <View style={[styles.totalCard, { backgroundColor: colors.card, ...shadows.medium }]}>
+      <View style={[styles.totalCard, { backgroundColor: colors.card, ...shadows.medium, marginTop: 12 }]}>
         <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Total Balance</Text>
         <Text style={[styles.totalAmount, { color: colors.text }]}>
           {formatCurrency(totalBalance)}
@@ -280,6 +270,16 @@ export default function AccountsScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* FAB - Add Account */}
+      {accounts.length > 0 && (
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: colors.primary }]}
+          onPress={() => setModalVisible(true)}
+        >
+          <Ionicons name="add" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -287,24 +287,6 @@ export default function AccountsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   totalCard: {
     marginHorizontal: 20,
@@ -458,5 +440,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
 });

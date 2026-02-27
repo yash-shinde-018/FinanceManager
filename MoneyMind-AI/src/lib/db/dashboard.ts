@@ -25,10 +25,22 @@ export async function getDashboardOverview() {
 
   if (!user) throw new Error('Not authenticated');
 
-  // Total income and expense
+  // Get actual account balances for this user
+  const { data: accounts, error: accountsError } = await supabase
+    .from('accounts')
+    .select('balance')
+    .eq('user_id', user.id)
+    .eq('status', 'active');
+
+  if (accountsError) throw accountsError;
+
+  const totalBalance = accounts?.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0) || 0;
+
+  // Get transactions for this user only
   const { data: sums, error } = await supabase
     .from('transactions')
-    .select('type, amount');
+    .select('type, amount')
+    .eq('user_id', user.id);
 
   if (error) throw error;
 
@@ -40,8 +52,6 @@ export async function getDashboardOverview() {
     if (t.type === 'expense') totalExpense += Number(t.amount);
   });
 
-  const totalBalance = totalIncome - totalExpense;
-
   // Last 30 days spending
   const since = new Date();
   since.setDate(since.getDate() - 30);
@@ -49,6 +59,7 @@ export async function getDashboardOverview() {
   const { data: recentSpending, error: recentError } = await supabase
     .from('transactions')
     .select('amount, type, occurred_at')
+    .eq('user_id', user.id)
     .gte('occurred_at', since.toISOString());
 
   if (recentError) throw recentError;
@@ -67,7 +78,8 @@ export async function getDashboardOverview() {
   // Check if user has any transactions before calling ML forecast
   const { count: transactionCount } = await supabase
     .from('transactions')
-    .select('*', { count: 'exact', head: true });
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', user.id);
   
   const hasTransactions = (transactionCount ?? 0) > 0 || monthlySpending > 0;
   
@@ -77,6 +89,7 @@ export async function getDashboardOverview() {
       const { data: userTransactions } = await supabase
         .from('transactions')
         .select('occurred_at, description, amount, category')
+        .eq('user_id', user.id)
         .order('occurred_at', { ascending: true });
       
       // Format transactions for ML API
@@ -132,6 +145,7 @@ export async function getDashboardOverview() {
     .from('transactions')
     .select('is_anomaly')
     .eq('is_anomaly', true)
+    .eq('user_id', user.id)
     .gte('occurred_at', since.toISOString());
 
   anomalyAlerts = anomalies?.length || 0;
@@ -154,9 +168,16 @@ export async function getDashboardOverview() {
 
 export async function getRecentTransactions(limit = 8) {
   const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error('Not authenticated');
+
   const { data, error } = await supabase
     .from('transactions')
     .select('*')
+    .eq('user_id', user.id)
     .order('occurred_at', { ascending: false })
     .limit(limit);
 
@@ -168,12 +189,19 @@ export async function getRecentTransactions(limit = 8) {
 export async function getSpendingTrends(months = 6) {
   const supabase = createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error('Not authenticated');
+
   const since = new Date();
   since.setMonth(since.getMonth() - months);
 
   const { data, error } = await supabase
     .from('transactions')
     .select('amount, type, occurred_at')
+    .eq('user_id', user.id)
     .gte('occurred_at', since.toISOString())
     .order('occurred_at', { ascending: true });
 
@@ -211,12 +239,19 @@ export async function getSpendingTrends(months = 6) {
 export async function getSpendingByCategory() {
   const supabase = createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error('Not authenticated');
+
   const since = new Date();
   since.setDate(1); // Start of current month
 
   const { data, error } = await supabase
     .from('transactions')
     .select('category, amount, type')
+    .eq('user_id', user.id)
     .eq('type', 'expense')
     .gte('occurred_at', since.toISOString());
 
@@ -244,12 +279,19 @@ export async function getSpendingByCategory() {
 export async function getWeeklyBreakdown() {
   const supabase = createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error('Not authenticated');
+
   const since = new Date();
   since.setDate(since.getDate() - 7);
 
   const { data, error } = await supabase
     .from('transactions')
     .select('amount, type, occurred_at')
+    .eq('user_id', user.id)
     .eq('type', 'expense')
     .gte('occurred_at', since.toISOString())
     .order('occurred_at', { ascending: true });

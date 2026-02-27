@@ -15,11 +15,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { LineChart, PieChart } from 'react-native-chart-kit';
 import { useTheme, spacing, borderRadius, typography, shadows } from '../../theme/ThemeContext';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../hooks/useAuth';
 
 const { width } = Dimensions.get('window');
 
 export default function AnalyticsScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
+  const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState<'month' | 'quarter' | 'year'>('month');
   const [analyticsData, setAnalyticsData] = useState({
@@ -43,6 +45,7 @@ export default function AnalyticsScreen({ navigation }: any) {
       const { data: transactions } = await supabase
         .from('transactions')
         .select('*')
+        .eq('user_id', user?.id)
         .order('occurred_at', { ascending: true });
 
       if (!transactions) return;
@@ -145,17 +148,8 @@ export default function AnalyticsScreen({ navigation }: any) {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={28} color={colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.text }]}>Analytics</Text>
-          <View style={{ width: 28 }} />
-        </View>
-
         {/* Time Range Selector */}
-        <View style={styles.timeRangeContainer}>
+        <View style={[styles.timeRangeContainer, { marginTop: 12 }]}>
           {(['month', 'quarter', 'year'] as const).map((range) => (
             <TouchableOpacity
               key={range}
@@ -255,17 +249,6 @@ export default function AnalyticsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
   },
   timeRangeContainer: {
     flexDirection: 'row',

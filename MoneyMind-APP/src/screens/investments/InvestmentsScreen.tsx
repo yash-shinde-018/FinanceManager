@@ -350,19 +350,10 @@ export default function InvestmentsScreen({ navigation }: any) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.title, { color: colors.text }]}>Investment Portfolio</Text>
-            <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-              Start building your investment portfolio
-            </Text>
-          </View>
-        </View>
 
         <ScrollView
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={styles.emptyContent}
-        >
+          contentContainerStyle={[styles.emptyContent, { paddingTop: 20 }]}>
           <View style={[styles.emptyCard, { backgroundColor: colors.card }]}>
             <View style={[styles.emptyIconContainer, { backgroundColor: colors.primary + '20' }]}>
               <Ionicons name="trending-up" size={40} color={colors.primary} />
@@ -573,53 +564,36 @@ export default function InvestmentsScreen({ navigation }: any) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Investment Portfolio</Text>
-        <View style={styles.headerButtons}>
-          <TouchableOpacity style={[styles.iconButton, { backgroundColor: colors.primary }]} onPress={() => setShowStocksModal(true)}>
-            <Ionicons name="cart" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.iconButton, { backgroundColor: colors.primary }]} onPress={() => setShowAddModal(true)}>
-            <Ionicons name="add" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      </View>
 
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.summaryContainer}>
+        <View style={[styles.summaryContainer, { marginTop: 12 }]}>
           <View style={[styles.summaryCard, { backgroundColor: colors.card, ...shadows.medium }]}>
             <View style={[styles.summaryIcon, { backgroundColor: colors.primary + '20' }]}>
               <Ionicons name="wallet" size={20} color={colors.primary} />
             </View>
-            <View>
-              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total Invested</Text>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(metrics.totalInvested)}</Text>
-            </View>
+            <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total Invested</Text>
+            <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(metrics.totalInvested)}</Text>
           </View>
 
           <View style={[styles.summaryCard, { backgroundColor: colors.card, ...shadows.medium }]}>
             <View style={[styles.summaryIcon, { backgroundColor: colors.success + '20' }]}>
               <Ionicons name="cash" size={20} color={colors.success} />
             </View>
-            <View>
-              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Current Value</Text>
-              <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(metrics.totalCurrent)}</Text>
-            </View>
+            <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Current Value</Text>
+            <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(metrics.totalCurrent)}</Text>
           </View>
 
           <View style={[styles.summaryCard, { backgroundColor: colors.card, ...shadows.medium }]}>
             <View style={[styles.summaryIcon, { backgroundColor: metrics.profitLoss >= 0 ? colors.success + '20' : colors.error + '20' }]}>
               <Ionicons name={metrics.profitLoss >= 0 ? 'trending-up' : 'trending-down'} size={20} color={metrics.profitLoss >= 0 ? colors.success : colors.error} />
             </View>
-            <View>
-              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Profit/Loss</Text>
-              <Text style={[styles.summaryValue, { color: metrics.profitLoss >= 0 ? colors.success : colors.error }]}>
-                {metrics.profitLoss >= 0 ? '+' : ''}{formatCurrency(metrics.profitLoss)}
-              </Text>
-            </View>
+            <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Profit/Loss</Text>
+            <Text style={[styles.summaryValue, { color: metrics.profitLoss >= 0 ? colors.success : colors.error }]}>
+              {metrics.profitLoss >= 0 ? '+' : ''}{formatCurrency(metrics.profitLoss)}
+            </Text>
           </View>
         </View>
 
@@ -880,17 +854,20 @@ export default function InvestmentsScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+
+      {/* FAB - Add Investment */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        onPress={() => setShowStocksModal(true)}
+      >
+        <Ionicons name="add" size={28} color="#FFFFFF" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16 },
-  title: { fontSize: 28, fontWeight: '700' },
-  subtitle: { fontSize: 14, marginTop: 4 },
-  headerButtons: { flexDirection: 'row', gap: 8 },
-  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   emptyContent: { padding: 20 },
   emptyCard: { borderRadius: 24, padding: 24, alignItems: 'center' },
   emptyIconContainer: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
@@ -905,11 +882,11 @@ const styles = StyleSheet.create({
   statBox: { flex: 1, alignItems: 'center', padding: 16, borderRadius: 16 },
   statValue: { fontSize: 18, fontWeight: '700', marginTop: 8, marginBottom: 4 },
   statLabel: { fontSize: 12 },
-  summaryContainer: { flexDirection: 'row', paddingHorizontal: 20, gap: 12, marginBottom: 16 },
-  summaryCard: { flex: 1, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  summaryContainer: { flexDirection: 'row', paddingHorizontal: 20, gap: 12, marginBottom: 16, flexWrap: 'wrap' },
+  summaryCard: { flex: 1, minWidth: '30%', borderRadius: 16, padding: 16, flexDirection: 'column', alignItems: 'center', gap: 8 },
   summaryIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  summaryLabel: { fontSize: 12, marginBottom: 4 },
-  summaryValue: { fontSize: 16, fontWeight: '700' },
+  summaryLabel: { fontSize: 12, marginBottom: 4, textAlign: 'center' },
+  summaryValue: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
   returnCard: { marginHorizontal: 20, marginBottom: 24, padding: 20, borderRadius: 16, alignItems: 'center' },
   returnLabel: { fontSize: 14, marginBottom: 8 },
   returnValue: { fontSize: 32, fontWeight: '700' },
@@ -961,4 +938,19 @@ const styles = StyleSheet.create({
   halfInput: { flex: 1 },
   submitButton: { marginTop: 24, paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
   submitButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
 });

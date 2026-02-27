@@ -59,7 +59,7 @@ export default function BudgetScreen({ navigation }: any) {
     category: 'food',
     amount: '',
     period: 'monthly',
-    alert_threshold: '80',
+    alert_threshold: '',
   });
 
   useEffect(() => {
@@ -134,7 +134,7 @@ export default function BudgetScreen({ navigation }: any) {
         category: newBudget.category,
         amount: parseFloat(newBudget.amount),
         period: newBudget.period,
-        alert_threshold: parseInt(newBudget.alert_threshold),
+        alert_threshold: newBudget.alert_threshold ? parseInt(newBudget.alert_threshold) : 80,
       });
 
       if (error) throw error;
@@ -228,7 +228,7 @@ export default function BudgetScreen({ navigation }: any) {
       category: 'food',
       amount: '',
       period: 'monthly',
-      alert_threshold: '80',
+      alert_threshold: '',
     });
   };
 
@@ -350,24 +350,13 @@ export default function BudgetScreen({ navigation }: any) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>Budget</Text>
-        <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: colors.primary }]}
-          onPress={() => setShowAddModal(true)}
-        >
-          <Ionicons name="add" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         {/* Overall Summary Card */}
-        <View style={[styles.summaryCard, { backgroundColor: colors.card, ...shadows.medium }]}>
+        <View style={[styles.summaryCard, { backgroundColor: colors.card, ...shadows.medium, marginTop: 12 }]}>
           <Text style={[styles.summaryTitle, { color: colors.text }]}>Monthly Overview</Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
@@ -434,6 +423,14 @@ export default function BudgetScreen({ navigation }: any) {
           </View>
         )}
       </ScrollView>
+
+      {/* FAB - Add Budget */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        onPress={() => setShowAddModal(true)}
+      >
+        <Ionicons name="add" size={28} color="#FFFFFF" />
+      </TouchableOpacity>
 
       {/* Add Budget Modal */}
       <Modal
@@ -519,17 +516,17 @@ export default function BudgetScreen({ navigation }: any) {
                 ))}
               </View>
 
-              <Text style={[styles.label, { color: colors.text }]}>Alert Threshold (%)</Text>
+              <Text style={[styles.label, { color: colors.text }]}>Alert Threshold (%) - Optional</Text>
               <TextInput
                 style={[styles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.border }]}
                 value={newBudget.alert_threshold}
                 onChangeText={(text) => setNewBudget({ ...newBudget, alert_threshold: text })}
                 keyboardType="numeric"
-                placeholder="80"
+                placeholder="80 (optional)"
                 placeholderTextColor={colors.textMuted}
               />
               <Text style={[styles.hint, { color: colors.textMuted }]}>
-                Get alerted when you reach this percentage of your budget
+                Optional: Get alerted when you reach this percentage of your budget
               </Text>
 
               <TouchableOpacity
@@ -604,21 +601,6 @@ export default function BudgetScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: { fontSize: 28, fontWeight: '700' },
-  addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   scrollContent: { padding: 20, paddingBottom: 40 },
   summaryCard: {
     borderRadius: 20,
@@ -767,6 +749,21 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   modalOverlay: {
     flex: 1,

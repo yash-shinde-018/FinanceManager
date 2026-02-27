@@ -33,8 +33,11 @@ export default function NotificationsScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    loadNotifications();
-  }, []);
+    if (user?.id) {
+      console.log('Loading notifications for user:', user.id);
+      loadNotifications();
+    }
+  }, [user?.id]);
 
   const loadNotifications = async () => {
     try {
@@ -45,6 +48,8 @@ export default function NotificationsScreen({ navigation }: any) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      console.log('Notifications loaded:', data?.length || 0, 'notifications found');
+      console.log('Notifications data:', data);
       setNotifications(data || []);
     } catch (error) {
       console.error('Error loading notifications:', error);
@@ -198,24 +203,6 @@ export default function NotificationsScreen({ navigation }: any) {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { color: colors.text }]}>Notifications</Text>
-          <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-            {unreadCount} unread
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.markAllButton, { borderColor: colors.border }]}
-          onPress={markAllAsRead}
-        >
-          <Text style={[styles.markAllText, { color: colors.primary }]}>
-            Mark all read
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       <FlatList
         data={notifications}
         renderItem={renderNotification}
@@ -223,7 +210,7 @@ export default function NotificationsScreen({ navigation }: any) {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingTop: 12 }]}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="notifications-off" size={64} color={colors.textMuted} />
@@ -240,31 +227,6 @@ export default function NotificationsScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  subtitle: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  markAllButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  markAllText: {
-    fontSize: 14,
-    fontWeight: '500',
   },
   list: {
     padding: 20,
