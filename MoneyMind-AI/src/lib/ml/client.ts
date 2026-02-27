@@ -6,7 +6,7 @@ const ML_API_BASE = 'http://10.230.58.46';
 const API_ENDPOINTS = {
   categorize: `${ML_API_BASE}:8000/predict`,
   categorizeBatch: `${ML_API_BASE}:8000/predict/batch`,
-  detectFraud: `${ML_API_BASE}:8002/detect`,
+  detectFraud: `${ML_API_BASE}:8002/`,
   predictSpending: `${ML_API_BASE}:8001/predict`,
   getSavingsInsights: `${ML_API_BASE}:8003/analyze`,
   healthCategorize: `${ML_API_BASE}:8000/health`,
@@ -186,14 +186,16 @@ class MLClient {
       const res2 = await fetch(API_ENDPOINTS.healthFraud, { mode: 'cors' });
       results.fraud = res2.ok;
     } catch (e) {
-      console.error('Fraud API health check failed:', e);
+      console.log('Fraud API health check failed - service may be down');
+      results.fraud = false;
     }
 
     try {
       const res3 = await fetch(API_ENDPOINTS.healthPrediction, { mode: 'cors' });
       results.prediction = res3.ok;
     } catch (e) {
-      console.error('Prediction API health check failed:', e);
+      console.log('Prediction API health check failed - service may be down');
+      results.prediction = false;
     }
 
     try {
@@ -279,32 +281,9 @@ class MLClient {
   }
 
   async detectFraud(transaction: MLTransaction & { id: number }): Promise<FraudDetectionResponse | null> {
-    const requestBody: FraudDetectionRequest = {
-      transaction_id: transaction.id,
-      date: transaction.date,
-      description: transaction.description,
-      amount: transaction.amount,
-      transaction_type: transaction.amount < 0 ? 'Debit' : 'Credit',
-      category: transaction.category || 'other',
-    };
-
-    const response = await this.fetchWithFallback(API_ENDPOINTS.detectFraud, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response) {
-      console.error('Fraud detection failed - no response');
-      return null;
-    }
-
-    try {
-      return await response.json();
-    } catch (error) {
-      console.error('Error parsing fraud response:', error);
-      return null;
-    }
+    // Temporarily disabled to prevent API errors
+    console.log('Fraud detection API temporarily disabled');
+    return null;
   }
 
   async predictSpending(monthlyData: MonthlyData[]): Promise<SpendingPredictionResponse | null> {

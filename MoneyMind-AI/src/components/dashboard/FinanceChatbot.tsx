@@ -51,7 +51,7 @@ export default function FinanceChatbot() {
 
     const checkChatbotHealth = async () => {
         try {
-            const response = await fetch('http://localhost:8004/chat/health');
+            const response = await fetch('http://10.230.58.159:8004/chat/health');
             const data = await response.json();
             setIsChatbotReady(data.chatbot_ready);
         } catch (error) {
@@ -82,7 +82,7 @@ export default function FinanceChatbot() {
             }));
 
             // Call chatbot API
-            const response = await fetch('http://localhost:8004/chat', {
+            const response = await fetch('http://10.230.58.159:8004/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

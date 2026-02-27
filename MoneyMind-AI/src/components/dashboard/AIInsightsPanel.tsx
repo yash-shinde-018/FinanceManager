@@ -10,24 +10,33 @@ import {
   ChevronRight,
   Lightbulb,
   Target,
-  Zap
+  Zap,
+  Heart,
+  PiggyBank,
+  TrendingUp,
+  Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AIInsight } from '@/types';
-import { mlClient } from '@/lib/ml/client';
+import { mlClient, SavingsAnalysisResponse } from '@/lib/ml/client';
+import { createClient } from '@/lib/supabase/client';
 
 const getInsightIcon = (type: string) => {
   switch (type) {
     case 'savings':
-      return Lightbulb;
+      return PiggyBank;
     case 'overspending':
       return TrendingDown;
     case 'anomaly':
       return AlertTriangle;
     case 'forecast':
-      return Brain;
+      return TrendingUp;
     case 'tip':
       return Zap;
+    case 'health':
+      return Heart;
+    case 'debt':
+      return Shield;
     default:
       return Sparkles;
   }
@@ -55,12 +64,14 @@ const getTypeLabel = (type: string) => {
 export default function AIInsightsPanel() {
   const [insights, setInsights] = useState<AIInsight[]>([]);
   const [loading, setLoading] = useState(true);
+  const [savingsData, setSavingsData] = useState<SavingsAnalysisResponse | null>(null);
 
   useEffect(() => {
     const loadInsights = async () => {
       try {
+        setLoading(true);
+        
         // Get user's transactions from Supabase
-        const { createClient } = await import('@/lib/supabase/client');
         const supabase = createClient();
 
         const { data: transactions } = await supabase
@@ -84,51 +95,128 @@ export default function AIInsightsPanel() {
           return;
         }
 
-        // Format transactions for ML API
-        const mlTransactions = transactions.map(t => ({
-          date: new Date(t.occurred_at).toISOString().split('T')[0],
-          description: t.description,
-          amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-          category: t.category,
-        }));
+        // Calculate metrics for savings insights
+        let totalIncome = 0;
+        let totalExpense = 0;
+        let foodSpending = 0;
+        let subscriptionSpending = 0;
+        let emiSpending = 0;
+        let investmentSpending = 0;
 
-        // Get insights from ML API
-        const response = await fetch('http://localhost:8000/insights/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(mlTransactions),
+        // Calculate last 30 days for recent metrics
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const recentTransactions = transactions.filter(
+          t => new Date(t.occurred_at) >= thirtyDaysAgo
+        );
+
+        recentTransactions.forEach((t) => {
+          const amount = Number(t.amount);
+          const category = (t.category || '').toLowerCase();
+
+          if (t.type === 'income') {
+            totalIncome += amount;
+          } else {
+            totalExpense += amount;
+            
+            if (category.includes('food')) foodSpending += amount;
+            if (category.includes('subscription')) subscriptionSpending += amount;
+            if (category.includes('emi') || category.includes('loan')) emiSpending += amount;
+            if (category.includes('invest')) investmentSpending += amount;
+          }
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.insights) {
-            // Convert ML insights to AIInsight format
-            const formattedInsights: AIInsight[] = data.insights.map((insight: any, index: number) => {
-              // Map insight types correctly
-              let insightType = insight.type || 'tip';
+        // Calculate volatility
+        const monthlyExpenseMap = new Map<string, number>();
+        transactions.filter(t => t.type === 'expense').forEach((t) => {
+          const date = new Date(t.occurred_at);
+          const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          monthlyExpenseMap.set(key, (monthlyExpenseMap.get(key) || 0) + Number(t.amount));
+        });
 
-              return {
-                id: `ml-${index}`,
-                type: insightType,
-                title: insight.type === 'summary' ? 'Spending Summary' :
-                  insight.type === 'category' ? 'Top Category' :
-                    insight.type === 'overspending' ? 'Spending Alert' :
-                      insight.type === 'forecast' ? 'AI Forecast' :
-                        insight.type === 'pattern' ? 'Spending Pattern' :
-                          insight.type === 'recommendation' ? 'AI Recommendation' : 'Insight',
-                description: insight.message,
-                severity: insight.severity === 'high' ? 'alert' :
-                  insight.severity === 'medium' ? 'warning' :
-                    insight.severity === 'low' ? 'success' : 'info',
-                timestamp: new Date(),
-                actionRequired: insight.type === 'overspending' || insight.type === 'recommendation',
-                actionText: insight.type === 'overspending' ? 'Set Budget' : 'View Details',
-              };
+        const monthlyExpenses = Array.from(monthlyExpenseMap.values());
+        const mean = monthlyExpenses.length
+          ? monthlyExpenses.reduce((s, v) => s + v, 0) / monthlyExpenses.length
+          : 0;
+        const variance = monthlyExpenses.length
+          ? monthlyExpenses.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / monthlyExpenses.length
+          : 0;
+        const std = Math.sqrt(variance);
+        const volatility = mean > 0 ? Math.min(1, std / mean) : 0.05;
+
+        // Call Savings Insights API (Port 8003)
+        const savingsResult = await mlClient.getSavingsInsights({
+          income: totalIncome,
+          expense: totalExpense,
+          savings: totalIncome - totalExpense,
+          food_spending: foodSpending,
+          subscription_spending: subscriptionSpending,
+          emi_spending: emiSpending,
+          investment_spending: investmentSpending,
+          volatility: volatility,
+        });
+
+        if (savingsResult) {
+          setSavingsData(savingsResult);
+          
+          // Convert savings insights to AIInsight format
+          const formattedInsights: AIInsight[] = [];
+
+          // Add financial health score insight
+          formattedInsights.push({
+            id: 'health-score',
+            type: 'tip',
+            title: `Financial Health: ${savingsResult.score_interpretation}`,
+            description: savingsResult.score_message,
+            severity: savingsResult.financial_health_score >= 70 ? 'success' :
+                     savingsResult.financial_health_score >= 50 ? 'warning' : 'alert',
+            timestamp: new Date(),
+            actionRequired: savingsResult.financial_health_score < 70,
+            actionText: 'Improve Score',
+          });
+
+          // Add risk level insight
+          if (savingsResult.risk_level !== 'Low') {
+            formattedInsights.push({
+              id: 'risk-level',
+              type: 'overspending',
+              title: `${savingsResult.risk_level} Risk Detected`,
+              description: `Your financial behavior shows ${savingsResult.risk_level.toLowerCase()} risk patterns. Review your spending habits.`,
+              severity: savingsResult.risk_level === 'High' ? 'alert' : 'warning',
+              timestamp: new Date(),
+              actionRequired: true,
+              actionText: 'View Details',
             });
-            setInsights(formattedInsights);
           }
+
+          // Add recommendations as individual insights
+          savingsResult.recommendations?.slice(0, 3).forEach((rec, index) => {
+            formattedInsights.push({
+              id: `rec-${index}`,
+              type: 'savings',
+              title: 'AI Recommendation',
+              description: rec,
+              severity: 'info',
+              timestamp: new Date(),
+              actionRequired: true,
+              actionText: 'Learn More',
+            });
+          });
+
+          // Add behavior class insight
+          formattedInsights.push({
+            id: 'behavior',
+            type: 'tip',
+            title: `Spending Profile: ${savingsResult.behavior_class}`,
+            description: `You're classified as "${savingsResult.behavior_class}" based on your spending patterns.`,
+            severity: 'info',
+            timestamp: new Date(),
+          });
+
+          setInsights(formattedInsights);
         } else {
-          throw new Error('Failed to get insights');
+          throw new Error('Failed to get savings insights');
         }
       } catch (error) {
         console.error('Error loading ML insights:', error);
@@ -137,7 +225,7 @@ export default function AIInsightsPanel() {
             id: '1',
             type: 'tip',
             title: 'AI Insights',
-            description: 'Add transactions to get personalized insights. Make sure ML API is running on port 8000.',
+            description: 'Add transactions to get personalized insights. Make sure ML service is running on port 8003.',
             severity: 'info',
             timestamp: new Date(),
           },
@@ -158,12 +246,22 @@ export default function AIInsightsPanel() {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center animate-pulse">
             <Brain className="w-5 h-5 text-white" />
           </div>
-          <div>
-            <h3 className="font-semibold text-lg">AI Insights</h3>
+          <div className="flex-1">
+            <h3 className="font-semibold text-lg">AI Savings Insights</h3>
             <p className="text-sm text-[var(--muted-text)]">
-              {loading ? 'Loading...' : `${insights.length} new recommendations`}
+              {loading ? 'Loading...' : `${insights.length} personalized recommendations`}
             </p>
           </div>
+          {savingsData && (
+            <div className={cn(
+              'px-3 py-1.5 rounded-full text-sm font-bold',
+              savingsData.financial_health_score >= 70 ? 'bg-emerald-500/10 text-emerald-400' :
+              savingsData.financial_health_score >= 50 ? 'bg-amber-500/10 text-amber-400' :
+              'bg-rose-500/10 text-rose-400'
+            )}>
+              Score: {savingsData.financial_health_score}
+            </div>
+          )}
         </div>
       </div>
 
@@ -240,10 +338,15 @@ export default function AIInsightsPanel() {
 
       {/* Footer */}
       <div className="p-4 border-t border-[var(--glass-border)] bg-[var(--glass-bg)]">
-        <button className="w-full flex items-center justify-center gap-2 text-sm text-[var(--muted-text)] hover:text-[var(--foreground)] transition-colors">
-          View All Insights
-          <ChevronRight className="w-4 h-4" />
-        </button>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-[var(--muted-text)]">
+            Powered by ML Port 8003
+          </p>
+          <button className="flex items-center gap-1 text-sm text-[var(--muted-text)] hover:text-[var(--foreground)] transition-colors">
+            View All Insights
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

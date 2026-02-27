@@ -16,17 +16,23 @@ import {
   ChevronRight,
   Filter,
   PiggyBank,
-  Shield
+  Shield,
+  Heart
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AIInsight } from '@/types';
 import { createClient } from '@/lib/supabase/client';
 import { mlClient } from '@/lib/ml/client';
+import SpendingPredictionCard from '@/components/dashboard/SpendingPredictionCard';
+import FraudDetectionPanel from '@/components/dashboard/FraudDetectionPanel';
+import MLStatusIndicator from '@/components/dashboard/MLStatusIndicator';
 
 const categories = [
   { id: 'all', label: 'All Insights', icon: Brain },
+  { id: 'ml-predictions', label: 'ML Predictions', icon: TrendingUp },
+  { id: 'fraud-detection', label: 'Fraud Check', icon: Shield },
   { id: 'savings', label: 'Savings', icon: PiggyBank },
-  { id: 'health', label: 'Financial Health', icon: Shield },
+  { id: 'health', label: 'Financial Health', icon: Heart },
   { id: 'overspending', label: 'Spending Alerts', icon: TrendingDown },
   { id: 'anomaly', label: 'Anomalies', icon: AlertTriangle },
   { id: 'forecast', label: 'Forecasts', icon: Target },
@@ -460,6 +466,11 @@ export default function InsightsPage() {
         </motion.div>
       </div>
 
+      {/* ML Services Status */}
+      <div className="flex justify-end">
+        <MLStatusIndicator />
+      </div>
+
       {/* Category Filter */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2">
         <Filter className="w-4 h-4 text-[var(--muted-text)] shrink-0" />
@@ -483,7 +494,17 @@ export default function InsightsPage() {
         })}
       </div>
 
-      {/* Insights List */}
+      {/* Content Area - Shows either Insights List or ML Components */}
+      {selectedCategory === 'ml-predictions' ? (
+        <div className="space-y-6">
+          <SpendingPredictionCard />
+        </div>
+      ) : selectedCategory === 'fraud-detection' ? (
+        <div className="space-y-6">
+          <FraudDetectionPanel />
+        </div>
+      ) : (
+        /* Insights List */
       <div className="space-y-4">
         {loading ? (
           <div className="card-glass p-12 text-center">
@@ -581,6 +602,7 @@ export default function InsightsPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

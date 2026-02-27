@@ -16,6 +16,9 @@ import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import FinancialHealthScore from '@/components/dashboard/FinancialHealthScore';
 import AIInsightsPanel from '@/components/dashboard/AIInsightsPanel';
+import SpendingPredictionCard from '@/components/dashboard/SpendingPredictionCard';
+import FraudDetectionPanel from '@/components/dashboard/FraudDetectionPanel';
+import MLStatusIndicator from '@/components/dashboard/MLStatusIndicator';
 import SpendingChart from '@/components/charts/SpendingChart';
 import CategoryChart from '@/components/charts/CategoryChart';
 import WeeklyBreakdownChart from '@/components/charts/WeeklyBreakdownChart';
@@ -163,9 +166,39 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* ML Services Status Header */}
+      <div className="flex justify-end">
+        <MLStatusIndicator />
+      </div>
+
       {/* Financial Health Score Section */}
       <section className="pt-2">
         <FinancialHealthScore />
+      </section>
+
+      {/* ML-Powered Insights Section */}
+      <section className="py-6">
+        <h2 className="text-xl font-bold mb-4">AI-Powered Insights</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Spending Prediction (Port 8001) */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+          >
+            <SpendingPredictionCard />
+          </motion.div>
+
+          {/* Fraud Detection (Port 8002) */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+            className="lg:col-span-2"
+          >
+            <FraudDetectionPanel />
+          </motion.div>
+        </div>
       </section>
 
       {/* Overview Cards Section */}
