@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "UPI App",
+    "slug": "upi-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.upiapp"
+    },
+    "android": {
+      "package": "com.yourcompany.upiapp"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
