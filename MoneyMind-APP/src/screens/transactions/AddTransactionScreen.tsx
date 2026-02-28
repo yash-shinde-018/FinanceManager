@@ -19,6 +19,8 @@ import { useTheme, spacing, borderRadius, typography, shadows } from '../../them
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { mlClient } from '../../lib/ml';
+import { useFraudDetection } from '../../hooks/useFraudDetection';
+import FraudAlert from '../../components/fraud/FraudAlert';
 
 const categories = [
   { value: 'food', label: 'Food & Dining', icon: 'restaurant' },
@@ -37,12 +39,15 @@ const categories = [
 export default function AddTransactionScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
   const { user } = useAuth();
+  const { result: fraudResult, isChecking: isCheckingFraud, checkTransaction, reset: resetFraud } = useFraudDetection();
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [showFraudAlert, setShowFraudAlert] = useState(false);
+  const [pendingTransaction, setPendingTransaction] = useState<any>(null);
 
   const handleAddTransaction = async () => {
     if (!amount || !description) {
@@ -107,51 +112,32 @@ export default function AddTransactionScreen({ navigation }: any) {
         }
       }
 
-      // Step 2: ALWAYS detect fraud/anomaly for EVERY transaction
-      let isAnomaly = false;
+      // Step 2: NEW - Check fraud with modal alert system
       const parsedAmount = parseFloat(amount);
-      const signedAmount = type === 'expense' ? -parsedAmount : parsedAmount;
       
-      const fraudResult = await mlClient.detectFraud({
-        id: Date.now(),
-        date: new Date().toISOString(),
-        description,
-        amount: signedAmount,  // Negative for expenses, positive for income
+      const fraudCheckResult = await checkTransaction({
+        user_id: user?.id || '',
+        amount: parsedAmount,
+        merchant: description.split(' ')[0] || 'Unknown',
         category: finalCategory || 'other',
+        location: 'Bangalore', // Replace with actual user location
       });
 
-      if (fraudResult) {
-        isAnomaly = fraudResult.status === 'Suspicious';
-        console.log('Fraud detection result:', fraudResult);
+      if (fraudCheckResult && fraudCheckResult.status !== 'Normal') {
+        // Show fraud alert modal
+        setPendingTransaction({
+          amount: parsedAmount,
+          type,
+          category: finalCategory,
+          description,
+        });
+        setShowFraudAlert(true);
+        setLoading(false);
+        return;
       }
 
-      console.log('User ID:', user?.id);
-      console.log('Inserting transaction with user_id:', user?.id);
-      
-      const { error, data } = await supabase.from('transactions').insert({
-        user_id: user?.id,
-        amount: parseFloat(amount),
-        type,
-        category: finalCategory,
-        description,
-        merchant: null,
-        payment_method: null,
-        status: 'completed',
-        is_anomaly: isAnomaly,
-        occurred_at: new Date().toISOString(),
-      }).select();
-      
-      console.log('Insert result:', { error, data });
-
-      if (error) throw error;
-
-      Toast.show({
-        type: 'success',
-        text1: 'Transaction Added',
-        text2: isAnomaly ? 'Anomaly detected by AI!' : `Category: ${finalCategory}`,
-      });
-
-      navigation.goBack();
+      // No fraud detected - proceed with saving
+      await saveTransaction();
     } catch (error: any) {
       Toast.show({
         type: 'error',
@@ -161,6 +147,80 @@ export default function AddTransactionScreen({ navigation }: any) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const saveTransaction = async () => {
+    if (!pendingTransaction && (!amount || !description)) return;
+    
+    const tx = pendingTransaction || {
+      amount: parseFloat(amount),
+      type,
+      category: category || aiSuggestion || 'other',
+      description,
+    };
+
+    try {
+      // Use legacy fraud detection for anomaly flag
+      let isAnomaly = false;
+      const signedAmount = tx.type === 'expense' ? -tx.amount : tx.amount;
+      
+      const fraudResult = await mlClient.detectFraud({
+        id: Date.now(),
+        date: new Date().toISOString(),
+        description: tx.description,
+        amount: signedAmount,
+        category: tx.category,
+      });
+
+      if (fraudResult) {
+        isAnomaly = fraudResult.status === 'Suspicious';
+      }
+
+      const { error, data } = await supabase.from('transactions').insert({
+        user_id: user?.id,
+        amount: tx.amount,
+        type: tx.type,
+        category: tx.category,
+        description: tx.description,
+        merchant: null,
+        payment_method: null,
+        status: 'completed',
+        is_anomaly: isAnomaly,
+        occurred_at: new Date().toISOString(),
+      }).select();
+
+      if (error) throw error;
+
+      // Reset states
+      setShowFraudAlert(false);
+      setPendingTransaction(null);
+      resetFraud();
+
+      Toast.show({
+        type: 'success',
+        text1: 'Transaction Added',
+        text2: isAnomaly ? 'Anomaly detected by AI!' : `Category: ${tx.category}`,
+      });
+
+      navigation.goBack();
+    } catch (error: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error.message || 'Failed to save transaction',
+      });
+    }
+  };
+
+  const cancelTransaction = () => {
+    setShowFraudAlert(false);
+    setPendingTransaction(null);
+    resetFraud();
+    Toast.show({
+      type: 'info',
+      text1: 'Transaction Cancelled',
+      text2: 'Fraud alert prevented the transaction',
+    });
   };
 
   return (
@@ -277,16 +337,26 @@ export default function AddTransactionScreen({ navigation }: any) {
           <TouchableOpacity
             style={[styles.addButton, { backgroundColor: colors.primary }]}
             onPress={handleAddTransaction}
-            disabled={loading}
+            disabled={loading || isCheckingFraud}
           >
-            {loading ? (
+            {loading || isCheckingFraud ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.addButtonText}>Add Transaction</Text>
+              <Text style={styles.addButtonText}>
+                {isCheckingFraud ? 'Checking...' : 'Add Transaction'}
+              </Text>
             )}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Fraud Alert Modal */}
+      <FraudAlert
+        visible={showFraudAlert}
+        result={fraudResult}
+        onProceed={saveTransaction}
+        onCancel={cancelTransaction}
+      />
     </SafeAreaView>
   );
 }

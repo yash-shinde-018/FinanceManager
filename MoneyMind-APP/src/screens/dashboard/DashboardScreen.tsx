@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { useTheme, spacing, borderRadius, typography, shadows } from '../../them
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { mlClient } from '../../lib/ml';
+import type { MonthlyData } from '../../lib/ml';
 
 const { width } = Dimensions.get('window');
 
@@ -47,9 +48,101 @@ export default function DashboardScreen({ navigation }: any) {
     anomalyAlerts: 0,
   });
 
+  // Use ref to store previous balance so it persists across renders
+  const previousBalanceRef = React.useRef<number>(0);
+
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (user?.id) {
+      loadDashboardData();
+      
+      // IMMEDIATE SYNC: Check for any unsynced UPI transactions on mount
+      const immediateSync = async () => {
+        console.log('[Dashboard] Immediate sync check...');
+        const { data: accounts } = await supabase
+          .from('accounts')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('status', 'active');
+        
+        if (accounts && accounts.length > 0) {
+          const { syncLatestTransactions } = await import('../../lib/upiSync');
+          const result = await syncLatestTransactions(user.id, accounts[0].id, 10);
+          console.log('[Dashboard] Immediate sync result:', result);
+          
+          if (result.synced > 0) {
+            loadDashboardData(); // Refresh if transactions were added
+          }
+        }
+      };
+      
+      immediateSync();
+      
+      // Start monitoring with proper initialization
+      const startMonitoring = async () => {
+        console.log('[Dashboard] Starting monitoring...');
+        
+        // Get initial balance FIRST
+        const { data: accounts } = await supabase
+          .from('accounts')
+          .select('id, balance')
+          .eq('user_id', user.id)
+          .eq('status', 'active');
+        
+        const total = accounts?.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0) || 0;
+        
+        // Set initial balance in ref
+        previousBalanceRef.current = total;
+        console.log('[Dashboard] Initial balance set:', total);
+        
+        // Now start polling
+        const interval = setInterval(async () => {
+          try {
+            const { data: currentAccounts } = await supabase
+              .from('accounts')
+              .select('id, balance')
+              .eq('user_id', user.id)
+              .eq('status', 'active');
+            
+            const currentTotal = currentAccounts?.reduce((sum, acc) => sum + (Number(acc.balance) || 0), 0) || 0;
+            const previousTotal = previousBalanceRef.current;
+            const change = currentTotal - previousTotal;
+            
+            console.log(`[Dashboard] Check - Prev: ${previousTotal}, Curr: ${currentTotal}, Diff: ${change}`);
+            
+            if (Math.abs(change) > 0.01) {
+              console.log('[Dashboard] ⚠️ BALANCE CHANGED!');
+              previousBalanceRef.current = currentTotal;
+              
+              const currentIds = currentAccounts?.map(a => a.id) || [];
+              if (currentIds.length > 0) {
+                const { syncUpiTransactions } = await import('../../lib/upiSync');
+                const result = await syncUpiTransactions(user.id, currentIds[0], {
+                  changeAmount: Math.abs(change),
+                  changeType: change > 0 ? 'income' : 'expense',
+                });
+                console.log('[Dashboard] Sync:', result);
+                
+                if (result.synced > 0) {
+                  loadDashboardData();
+                }
+              }
+            }
+          } catch (err) {
+            console.error('[Dashboard] Monitor error:', err);
+          }
+        }, 3000);
+        
+        return interval;
+      };
+      
+      let intervalId: NodeJS.Timeout;
+      startMonitoring().then(id => { intervalId = id; });
+      
+      return () => {
+        if (intervalId) clearInterval(intervalId);
+      };
+    }
+  }, [user?.id]);
 
   const loadDashboardData = async () => {
     try {
@@ -92,21 +185,74 @@ export default function DashboardScreen({ navigation }: any) {
         }
       });
 
-      // Get ML forecast
-      let predictedSpending = 0;
-      try {
-        const mlTransactions = transactions?.map((t: any) => ({
-          date: t.occurred_at.split('T')[0],
-          description: t.description,
-          amount: t.type === 'income' ? Number(t.amount) : -Number(t.amount),
-          category: t.category,
-        })) || [];
+      // Calculate monthly data for ML prediction
+      const monthlyMap = new Map<string, MonthlyData>();
+      
+      transactions?.forEach((t: any) => {
+        const amount = Number(t.amount);
+        const date = new Date(t.occurred_at);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
         
-        const forecast = await mlClient.getForecast(mlTransactions, 30);
-        predictedSpending = forecast?.total_predicted || monthlyExpense;
-      } catch (error) {
-        console.error('Forecast error:', error);
-        predictedSpending = monthlyExpense;
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            date: monthKey,
+            total_expense: 0,
+            total_income: 0,
+            expense_food: 0,
+            expense_travel: 0,
+            expense_bills: 0,
+            expense_emi: 0,
+            expense_shopping: 0,
+            expense_investment: 0,
+            expense_healthcare: 0,
+            expense_entertainment: 0,
+            expense_subscription: 0,
+            expense_transfer: 0,
+            expense_others: 0,
+          });
+        }
+        
+        const month = monthlyMap.get(monthKey)!;
+        const category = (t.category || '').toLowerCase();
+        
+        if (t.type === 'income') {
+          month.total_income += amount;
+        } else {
+          month.total_expense += amount;
+          
+          // Categorize expenses
+          if (category.includes('food')) month.expense_food += amount;
+          else if (category.includes('travel') || category.includes('transport')) month.expense_travel += amount;
+          else if (category.includes('bill') || category.includes('utility')) month.expense_bills += amount;
+          else if (category.includes('emi') || category.includes('loan')) month.expense_emi += amount;
+          else if (category.includes('shop')) month.expense_shopping += amount;
+          else if (category.includes('invest')) month.expense_investment += amount;
+          else if (category.includes('health') || category.includes('medical')) month.expense_healthcare += amount;
+          else if (category.includes('entertainment') || category.includes('movie')) month.expense_entertainment += amount;
+          else if (category.includes('subscription')) month.expense_subscription += amount;
+          else if (category.includes('transfer')) month.expense_transfer += amount;
+          else month.expense_others += amount;
+        }
+      });
+
+      // Get ML spending prediction (need 12+ months)
+      let predictedSpending = 0; // Don't show monthly spending as fallback
+      const monthlyDataArray = Array.from(monthlyMap.values()).sort((a, b) => 
+        new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+      
+      if (monthlyDataArray.length >= 12) {
+        try {
+          const predictionResult = await mlClient.predictSpending(monthlyDataArray);
+          if (predictionResult && predictionResult.predicted_expense) {
+            predictedSpending = Math.abs(predictionResult.predicted_expense);
+            console.log('Dashboard: Predicted spending:', predictedSpending);
+          }
+        } catch (error) {
+          console.error('Prediction error:', error);
+        }
+      } else {
+        console.log('Dashboard: Insufficient data for prediction, need 12+ months, have:', monthlyDataArray.length);
       }
 
       // Get spending by category
@@ -245,6 +391,33 @@ export default function DashboardScreen({ navigation }: any) {
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
+          <TouchableOpacity 
+            style={[styles.statCard, { backgroundColor: colors.card, ...shadows.small }]}
+            onPress={async () => {
+              console.log('[Dashboard] TEST: Manual sync triggered');
+              if (!user?.id) return;
+              const { syncLatestTransactions } = await import('../../lib/upiSync');
+              const { data: accounts } = await supabase
+                .from('accounts')
+                .select('id')
+                .eq('user_id', user.id)
+                .limit(1);
+              if (accounts?.[0]) {
+                const result = await syncLatestTransactions(user.id, accounts[0].id, 10);
+                console.log('[Dashboard] TEST Result:', result);
+                if (result.synced > 0) loadDashboardData();
+              }
+            }}
+          >
+            <Ionicons name="sync" size={24} color={colors.primary} />
+            <Text style={[styles.statValue, { color: colors.text }]}>
+              Sync
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+              UPI Now
+            </Text>
+          </TouchableOpacity>
+          
           <View style={[styles.statCard, { backgroundColor: colors.card, ...shadows.small }]}>
             <Ionicons name="trending-up" size={24} color={colors.primary} />
             <Text style={[styles.statValue, { color: colors.text }]}>

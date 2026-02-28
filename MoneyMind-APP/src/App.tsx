@@ -15,6 +15,7 @@ import SignupScreen from './screens/auth/SignupScreen';
 import DashboardScreen from './screens/dashboard/DashboardScreen';
 import TransactionsScreen from './screens/transactions/TransactionsScreen';
 import AddTransactionScreen from './screens/transactions/AddTransactionScreen';
+import UncategorizedTransactionsScreen from './screens/transactions/UncategorizedTransactionsScreen';
 import GoalsScreen from './screens/goals/GoalsScreen';
 import InvestmentsScreen from './screens/investments/InvestmentsScreen';
 import AnalyticsScreen from './screens/analytics/AnalyticsScreen';
@@ -67,6 +68,7 @@ function Navigation() {
             <Stack.Screen name="Accounts" component={AccountsScreen} />
             <Stack.Screen name="Analytics" component={AnalyticsScreen} />
             <Stack.Screen name="Insights" component={InsightsScreen} />
+            <Stack.Screen name="Uncategorized" component={UncategorizedTransactionsScreen} />
           </>
         ) : !hasCompletedOnboarding ? (
           <>

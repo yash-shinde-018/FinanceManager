@@ -1,10 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import 'react-native-url-polyfill/auto';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '@env';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, UPI_SUPABASE_URL, UPI_SUPABASE_ANON_KEY } from '@env';
 
 const supabaseUrl = SUPABASE_URL || '';
 const supabaseAnonKey = SUPABASE_ANON_KEY || '';
+
+// UPI App Supabase (transaction database)
+const upiSupabaseUrl = UPI_SUPABASE_URL || '';
+const upiSupabaseKey = UPI_SUPABASE_ANON_KEY || '';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -14,6 +18,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// UPI App Supabase client (direct DB access for transactions)
+export const upiSupabase = upiSupabaseUrl && upiSupabaseKey
+  ? createClient(upiSupabaseUrl, upiSupabaseKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    })
+  : null;
 
 export type Transaction = {
   id: string;

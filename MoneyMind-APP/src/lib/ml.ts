@@ -70,14 +70,13 @@ export interface MonthlyData {
 }
 
 export interface SpendingPredictionResponse {
-  prediction: number;
-  confidence_interval: {
-    lower: number;
-    upper: number;
-  };
+  predicted_expense: number;
+  prediction?: number;
+  confidence_interval: [number, number] | { lower: number; upper: number };
+  mape?: number;
   model_used: string;
-  model_accuracy: string;
-  model_mape: string;
+  model_accuracy?: string;
+  model_mape?: string;
 }
 
 export interface SavingsAnalysisRequest {
@@ -99,11 +98,15 @@ export interface SavingsAnalysisResponse {
   risk_level: string;
   recommendations: string[];
   score_breakdown: {
-    savings_score: number;
-    debt_score: number;
-    expense_score: number;
-    investment_score: number;
-    volatility_score: number;
+    savings_rate_score?: number;
+    debt_ratio_score?: number;
+    expense_ratio_score?: number;
+    investment_rate_score?: number;
+    volatility_score?: number;
+    savings_score?: number;
+    debt_score?: number;
+    expense_score?: number;
+    investment_score?: number;
   };
   triggered_rules: string[];
   cluster_id: number;
@@ -149,36 +152,36 @@ class MLClient {
   }
 
   async healthCheck(): Promise<{
-    categorize: boolean;
+    categorization: boolean;
     fraud: boolean;
     prediction: boolean;
     savings: boolean;
   }> {
-    const results = { categorize: false, fraud: false, prediction: false, savings: false };
+    const results = { categorization: false, fraud: false, prediction: false, savings: false };
 
     try {
-      const res1 = await fetch(API_ENDPOINTS.healthCategorize);
-      results.categorize = res1.ok;
+      const res1 = await fetch(API_ENDPOINTS.healthCategorize, { mode: 'cors' });
+      results.categorization = res1.ok;
     } catch (e) {
       console.error('Categorization API health check failed:', e);
     }
 
     try {
-      const res2 = await fetch(API_ENDPOINTS.healthFraud);
+      const res2 = await fetch(API_ENDPOINTS.healthFraud, { mode: 'cors' });
       results.fraud = res2.ok;
     } catch (e) {
       console.error('Fraud API health check failed:', e);
     }
 
     try {
-      const res3 = await fetch(API_ENDPOINTS.healthPrediction);
+      const res3 = await fetch(API_ENDPOINTS.healthPrediction, { mode: 'cors' });
       results.prediction = res3.ok;
     } catch (e) {
       console.error('Prediction API health check failed:', e);
     }
 
     try {
-      const res4 = await fetch(API_ENDPOINTS.healthSavings);
+      const res4 = await fetch(API_ENDPOINTS.healthSavings, { mode: 'cors' });
       results.savings = res4.ok;
     } catch (e) {
       console.error('Savings API health check failed:', e);
@@ -282,8 +285,10 @@ class MLClient {
   }
 
   async predictSpending(monthlyData: MonthlyData[]): Promise<SpendingPredictionResponse | null> {
-    if (monthlyData.length < 3) {
-      console.warn('Need at least 3 months of data for prediction');
+    console.log('predictSpending called with', monthlyData.length, 'months');
+    
+    if (monthlyData.length < 12) {
+      console.warn('Need at least 12 months of data for prediction, got:', monthlyData.length);
       return null;
     }
 
@@ -299,7 +304,24 @@ class MLClient {
     }
 
     try {
-      return await response.json();
+      const result = await response.json();
+      console.log('Spending prediction result:', result);
+      
+      // Normalize the response to match expected format
+      const normalizedResult: SpendingPredictionResponse = {
+        ...result,
+        // Map predicted_expense to prediction for compatibility
+        prediction: result.predicted_expense ?? result.prediction,
+        // Handle confidence_interval as array [lower, upper] or object
+        confidence_interval: Array.isArray(result.confidence_interval) 
+          ? { lower: result.confidence_interval[0], upper: result.confidence_interval[1] }
+          : result.confidence_interval,
+        model_accuracy: result.model_accuracy || `${result.mape?.toFixed(2) || 'N/A'}%`,
+        model_mape: result.model_mape || `${result.mape?.toFixed(2) || 'N/A'}%`,
+      };
+      
+      console.log('Normalized prediction:', normalizedResult.prediction);
+      return normalizedResult;
     } catch (error) {
       console.error('Error parsing prediction response:', error);
       return null;
