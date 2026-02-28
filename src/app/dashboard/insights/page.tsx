@@ -14,26 +14,32 @@ import {
   CheckCircle2,
   Clock,
   ChevronRight,
-  Filter
+  Filter,
+  PiggyBank,
+  Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AIInsight } from '@/types';
 import { createClient } from '@/lib/supabase/client';
+import { mlClient } from '@/lib/ml/client';
 
 const categories = [
-  { id: 'all', label: 'All Insights', icon: Brain },
-  { id: 'savings', label: 'Savings', icon: Lightbulb },
-  { id: 'overspending', label: 'Spending Alerts', icon: TrendingDown },
-  { id: 'anomaly', label: 'Anomalies', icon: AlertTriangle },
-  { id: 'forecast', label: 'Forecasts', icon: Target },
-  { id: 'tip', label: 'Tips', icon: Zap },
+  { id: 'all', label: 'All Insights', icon: Brain, mlModel: null },
+  { id: 'savings', label: 'Savings', icon: PiggyBank, mlModel: 'savings' },
+  { id: 'health', label: 'Financial Health', icon: Shield, mlModel: 'savings' },
+  { id: 'overspending', label: 'Spending Alerts', icon: TrendingDown, mlModel: 'prediction' },
+  { id: 'anomaly', label: 'Anomalies', icon: AlertTriangle, mlModel: 'fraud' },
+  { id: 'forecast', label: 'Forecasts', icon: Target, mlModel: 'prediction' },
+  { id: 'tip', label: 'Tips', icon: Zap, mlModel: null },
 ];
 
 const getInsightIcon = (type: string) => {
   switch (type) {
     case 'savings':
     case 'positive':
-      return Lightbulb;
+      return PiggyBank;
+    case 'health':
+      return Shield;
     case 'overspending':
     case 'warning':
       return TrendingDown;
@@ -73,8 +79,26 @@ export default function InsightsPage() {
   const [insights, setInsights] = useState<AIInsight[]>([]);
   const [dismissedInsights, setDismissedInsights] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mlStatus, setMlStatus] = useState({
+    categorization: false,
+    prediction: false,
+    fraud: false,
+    savings: false,
+  });
 
   useEffect(() => {
+    // Check ML models health
+    const checkMLHealth = async () => {
+      try {
+        const health = await mlClient.healthCheck();
+        setMlStatus(health);
+      } catch (error) {
+        console.error('ML health check failed:', error);
+      }
+    };
+    
+    checkMLHealth();
+    
     const loadInsights = async () => {
       try {
         const supabase = createClient();
@@ -102,73 +126,221 @@ export default function InsightsPage() {
           return;
         }
 
-        // Format transactions for ML API
-        const mlTransactions = transactions.map(t => ({
-          date: new Date(t.occurred_at).toISOString().split('T')[0],
-          description: t.description,
-          amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-          category: t.category,
-        }));
-
-        // Get insights from ML API
-        const response = await fetch('http://localhost:8000/insights/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(mlTransactions),
+        // Calculate financial metrics for savings API
+        let totalIncome = 0;
+        let totalExpense = 0;
+        let foodSpending = 0;
+        let subscriptionSpending = 0;
+        let emiSpending = 0;
+        let investmentSpending = 0;
+        
+        // Calculate volatility (standard deviation of monthly expenses)
+        const monthlyExpenses: number[] = [];
+        const monthlyMap = new Map<string, number>();
+        
+        transactions.forEach((t) => {
+          const amount = Number(t.amount);
+          const category = (t.category || '').toLowerCase();
+          
+          if (t.type === 'income') {
+            totalIncome += amount;
+          } else {
+            totalExpense += amount;
+            
+            // Categorize expenses
+            if (category.includes('food')) foodSpending += amount;
+            else if (category.includes('subscription')) subscriptionSpending += amount;
+            else if (category.includes('emi') || category.includes('loan')) emiSpending += amount;
+            else if (category.includes('invest')) investmentSpending += amount;
+            
+            // Monthly aggregation for volatility
+            const date = new Date(t.occurred_at);
+            const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            monthlyMap.set(monthKey, (monthlyMap.get(monthKey) || 0) + amount);
+          }
         });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.insights) {
-            // Convert ML insights to AIInsight format
-            const formattedInsights: AIInsight[] = data.insights.map((insight: any, index: number) => {
-              // Map insight types correctly
-              let insightType = insight.type || 'tip';
-
-              // Map 'overspending' to match filter category
-              if (insightType === 'overspending') {
-                insightType = 'overspending';
-              }
-
-              return {
-                id: `ml-${index}`,
-                type: insightType,
-                title: insight.type === 'summary' ? 'Spending Summary' :
-                  insight.type === 'category' ? 'Top Category' :
-                    insight.type === 'overspending' ? 'Spending Alert' :
-                      insight.type === 'forecast' ? 'AI Forecast' :
-                        insight.type === 'pattern' ? 'Spending Pattern' :
-                          insight.type === 'recommendation' ? 'AI Recommendation' : 'Insight',
-                description: insight.message,
-                severity: insight.severity === 'high' ? 'alert' :
-                  insight.severity === 'medium' ? 'warning' :
-                    insight.severity === 'low' ? 'success' : 'info',
-                timestamp: new Date(),
-                actionRequired: insight.type === 'overspending' || insight.type === 'recommendation',
-                actionText: insight.type === 'overspending' ? 'Set Budget' : 'View Details',
-              };
+        
+        // Calculate volatility
+        const monthlyValues = Array.from(monthlyMap.values());
+        const avgExpense = monthlyValues.reduce((a, b) => a + b, 0) / monthlyValues.length;
+        const variance = monthlyValues.reduce((acc, val) => acc + Math.pow(val - avgExpense, 2), 0) / monthlyValues.length;
+        const volatility = Math.sqrt(variance) / (avgExpense || 1);
+        
+        const savings = totalIncome - totalExpense;
+        
+        // Get savings insights from ML API
+        const formattedInsights: AIInsight[] = [];
+        
+        // Build monthly data for spending prediction (need 3+ months)
+        const monthlyDataForPrediction: any[] = [];
+        const monthlyDetailMap = new Map<string, {
+          total_expense: number;
+          total_income: number;
+          expense_food: number;
+          expense_travel: number;
+          expense_bills: number;
+          expense_emi: number;
+          expense_shopping: number;
+          expense_investment: number;
+          expense_healthcare: number;
+          expense_entertainment: number;
+          expense_subscription: number;
+          expense_transfer: number;
+          expense_others: number;
+        }>();
+        
+        transactions.forEach((t) => {
+          const amount = Number(t.amount);
+          const date = new Date(t.occurred_at);
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+          const category = (t.category || '').toLowerCase();
+          
+          if (!monthlyDetailMap.has(monthKey)) {
+            monthlyDetailMap.set(monthKey, {
+              total_expense: 0,
+              total_income: 0,
+              expense_food: 0,
+              expense_travel: 0,
+              expense_bills: 0,
+              expense_emi: 0,
+              expense_shopping: 0,
+              expense_investment: 0,
+              expense_healthcare: 0,
+              expense_entertainment: 0,
+              expense_subscription: 0,
+              expense_transfer: 0,
+              expense_others: 0,
             });
-
-            // Add anomaly insights from transactions
-            const anomalies = transactions.filter(t => t.is_anomaly);
-            anomalies.forEach((anomaly, index) => {
+          }
+          
+          const monthData = monthlyDetailMap.get(monthKey)!;
+          
+          if (t.type === 'expense') {
+            monthData.total_expense += amount;
+            
+            // Categorize expenses for prediction API
+            if (category.includes('food')) monthData.expense_food += amount;
+            else if (category.includes('travel') || category.includes('transport')) monthData.expense_travel += amount;
+            else if (category.includes('bill') || category.includes('utility')) monthData.expense_bills += amount;
+            else if (category.includes('emi') || category.includes('loan')) monthData.expense_emi += amount;
+            else if (category.includes('shop')) monthData.expense_shopping += amount;
+            else if (category.includes('invest')) monthData.expense_investment += amount;
+            else if (category.includes('health') || category.includes('medical')) monthData.expense_healthcare += amount;
+            else if (category.includes('entertainment') || category.includes('movie')) monthData.expense_entertainment += amount;
+            else if (category.includes('subscription')) monthData.expense_subscription += amount;
+            else if (category.includes('transfer')) monthData.expense_transfer += amount;
+            else monthData.expense_others += amount;
+          } else {
+            monthData.total_income += amount;
+          }
+        });
+        
+        // Convert map to array sorted by date
+        monthlyDetailMap.forEach((data, date) => {
+          monthlyDataForPrediction.push({ date, ...data });
+        });
+        monthlyDataForPrediction.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
+        // Get spending prediction if we have 12+ months (API requirement)
+        if (monthlyDataForPrediction.length >= 12) {
+          try {
+            const predictionResult = await mlClient.predictSpending(monthlyDataForPrediction);
+            
+            if (predictionResult && predictionResult.predicted_expense) {
+              const predValue = Math.abs(predictionResult.predicted_expense);
+              const lower = typeof predictionResult.confidence_interval === 'object' && 'lower' in predictionResult.confidence_interval 
+                ? Math.abs(predictionResult.confidence_interval.lower)
+                : 0;
+              const upper = typeof predictionResult.confidence_interval === 'object' && 'upper' in predictionResult.confidence_interval 
+                ? Math.abs(predictionResult.confidence_interval.upper)
+                : 0;
+              
               formattedInsights.push({
-                id: `anomaly-${index}`,
-                type: 'anomaly',
-                title: 'Unusual Transaction Detected',
-                description: `A ₹${Math.abs(anomaly.amount).toFixed(2)} transaction at "${anomaly.description}" was flagged as unusual by our AI anomaly detection system.`,
-                severity: 'alert',
-                timestamp: new Date(anomaly.occurred_at),
-                actionRequired: true,
-                actionText: 'Review Transaction',
+                id: 'spending-forecast',
+                type: 'forecast',
+                title: 'AI Spending Forecast',
+                description: `Based on your spending patterns, AI predicts your next month's spending will be approximately ₹${predValue.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}. ${lower && upper ? `Expected range: ₹${lower.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')} - ₹${upper.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.` : ''} Model: ${predictionResult.model_used || 'LinearRegression'}`,
+                severity: 'info',
+                timestamp: new Date(),
+                actionRequired: false,
               });
-            });
-
-            setInsights(formattedInsights);
+            }
+          } catch (error) {
+            console.error('Error getting spending prediction:', error);
           }
         } else {
-          throw new Error('Failed to get insights');
+          // Add a tip about needing more data
+          formattedInsights.push({
+            id: 'forecast-pending',
+            type: 'tip',
+            title: 'Spending Forecast Coming Soon',
+            description: `Add more transactions to get AI spending predictions! You currently have ${monthlyDataForPrediction.length} months of data. We need at least 12 months for accurate predictions.`,
+            severity: 'info',
+            timestamp: new Date(),
+            actionRequired: false,
+          });
         }
+        
+        try {
+          const savingsResult = await mlClient.getSavingsInsights({
+            income: totalIncome,
+            expense: totalExpense,
+            savings: Math.max(0, savings),
+            food_spending: foodSpending,
+            subscription_spending: subscriptionSpending,
+            emi_spending: emiSpending,
+            investment_spending: investmentSpending,
+            volatility: Math.min(volatility, 1.0),
+          });
+          
+          if (savingsResult) {
+            // Add financial health score insight
+            formattedInsights.push({
+              id: 'savings-health',
+              type: 'savings',
+              title: `Financial Health: ${savingsResult.behavior_class}`,
+              description: savingsResult.score_message,
+              severity: savingsResult.financial_health_score >= 70 ? 'success' : 
+                       savingsResult.financial_health_score >= 50 ? 'warning' : 'alert',
+              timestamp: new Date(),
+              actionRequired: savingsResult.financial_health_score < 70,
+              actionText: 'View Details',
+            });
+            
+            // Add recommendations as separate insights
+            savingsResult.recommendations.forEach((rec, index) => {
+              formattedInsights.push({
+                id: `savings-rec-${index}`,
+                type: 'savings',
+                title: 'Savings Recommendation',
+                description: rec,
+                severity: 'info',
+                timestamp: new Date(),
+                actionRequired: true,
+                actionText: 'Learn More',
+              });
+            });
+          }
+        } catch (error) {
+          console.error('Error getting savings insights:', error);
+        }
+
+        // Add anomaly insights from transactions
+        const anomalies = transactions.filter(t => t.is_anomaly);
+        anomalies.forEach((anomaly, index) => {
+          formattedInsights.push({
+            id: `anomaly-${index}`,
+            type: 'anomaly',
+            title: 'Unusual Transaction Detected',
+            description: `A ₹${Math.abs(anomaly.amount).toFixed(2)} transaction at "${anomaly.description}" was flagged as unusual by our AI anomaly detection system.`,
+            severity: 'alert',
+            timestamp: new Date(anomaly.occurred_at),
+            actionRequired: true,
+            actionText: 'Review Transaction',
+          });
+        });
+
+        setInsights(formattedInsights);
       } catch (error) {
         console.error('Error loading insights:', error);
         setInsights([
@@ -176,7 +348,7 @@ export default function InsightsPage() {
             id: '1',
             type: 'tip',
             title: 'AI Insights',
-            description: 'Add transactions to get personalized insights. Make sure ML API is running on port 8000.',
+            description: 'Add transactions to get personalized insights. Make sure ML API is running on all ports (8000-8003).',
             severity: 'info',
             timestamp: new Date(),
           },
@@ -311,12 +483,16 @@ export default function InsightsPage() {
         <Filter className="w-4 h-4 text-[var(--muted-text)] shrink-0" />
         {categories.map((category) => {
           const Icon = category.icon;
+          const isModelActive = category.mlModel 
+            ? mlStatus[category.mlModel as keyof typeof mlStatus]
+            : true;
+          
           return (
             <button
               key={category.id}
               onClick={() => setSelectedCategory(category.id)}
               className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap',
+                'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap relative',
                 selectedCategory === category.id
                   ? 'bg-indigo-500 text-white'
                   : 'bg-[var(--glass-bg)] text-[var(--muted-text)] hover:text-[var(--foreground)]'
@@ -324,6 +500,12 @@ export default function InsightsPage() {
             >
               <Icon className="w-4 h-4" />
               {category.label}
+              {category.mlModel && (
+                <div className={cn(
+                  'w-1.5 h-1.5 rounded-full absolute -top-0.5 -right-0.5',
+                  isModelActive ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                )} />
+              )}
             </button>
           );
         })}

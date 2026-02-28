@@ -133,7 +133,7 @@ export default function TransactionsPage() {
       await saveAnomalyFeedback(
         selectedTransaction.id,
         isActuallyAnomaly,
-        selectedTransaction.isAnomaly,
+        selectedTransaction.isAnomaly ?? false,
         0.8,
         notes
       );
@@ -494,7 +494,7 @@ export default function TransactionsPage() {
             type: selectedTransaction.type,
             category: selectedTransaction.category,
             occurred_at: selectedTransaction.date.toISOString(),
-            is_anomaly: selectedTransaction.isAnomaly,
+            is_anomaly: selectedTransaction.isAnomaly ?? false,
           }}
           confidence={0.8}
           onClose={() => {

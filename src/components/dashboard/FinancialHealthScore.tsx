@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { Heart, TrendingUp, Shield, Wallet, Target, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { mlClient } from '@/lib/ml/client';
 
 interface FinancialHealthScoreProps {
   score?: number;
@@ -58,7 +59,7 @@ export default function FinancialHealthScore({ score: propScore }: FinancialHeal
       // Get all transactions
       const { data: transactions } = await supabase
         .from('transactions')
-        .select('amount, type, occurred_at');
+        .select('amount, type, occurred_at, category');
 
       if (!transactions || transactions.length === 0) {
         setHasData(false);
@@ -150,12 +151,79 @@ export default function FinancialHealthScore({ score: propScore }: FinancialHeal
       });
 
       // Generate AI insight
-      generateAIInsight(overallScore, {
-        spendingControl: Math.round(spendingControl),
-        goalProgress: Math.round(goalProgress),
-        savingsRate: Math.round(savingsRate),
-        debtRatio: Math.round(debtRatio),
-      });
+      try {
+        const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+        const monthlyExpenseMap = new Map<string, number>();
+        (transactions ?? []).forEach((t) => {
+          if (t.type !== 'expense') return;
+          const dt = new Date(t.occurred_at);
+          const key = monthKey(dt);
+          monthlyExpenseMap.set(key, (monthlyExpenseMap.get(key) || 0) + Number(t.amount));
+        });
+
+        const monthlyExpenses = Array.from(monthlyExpenseMap.values());
+        const mean = monthlyExpenses.length
+          ? monthlyExpenses.reduce((s, v) => s + v, 0) / monthlyExpenses.length
+          : 0;
+        const variance = monthlyExpenses.length
+          ? monthlyExpenses.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / monthlyExpenses.length
+          : 0;
+        const std = Math.sqrt(variance);
+        const volatility = mean > 0 ? Math.min(1, std / mean) : 0.05;
+
+        const food_spending = (recentTransactions ?? []).reduce((sum, t) => {
+          const cat = String((t as any).category || '').toLowerCase();
+          return cat.includes('food') ? sum + Number(t.amount) : sum;
+        }, 0);
+
+        const subscription_spending = (recentTransactions ?? []).reduce((sum, t) => {
+          const cat = String((t as any).category || '').toLowerCase();
+          return cat.includes('subscription') ? sum + Number(t.amount) : sum;
+        }, 0);
+
+        const emi_spending = (recentTransactions ?? []).reduce((sum, t) => {
+          const cat = String((t as any).category || '').toLowerCase();
+          return cat.includes('emi') ? sum + Number(t.amount) : sum;
+        }, 0);
+
+        const investment_spending = (recentTransactions ?? []).reduce((sum, t) => {
+          const cat = String((t as any).category || '').toLowerCase();
+          return cat.includes('invest') ? sum + Number(t.amount) : sum;
+        }, 0);
+
+        const savingsResult = await mlClient.getSavingsInsights({
+          income: recentIncome,
+          expense: recentExpense,
+          savings: recentIncome - recentExpense,
+          food_spending,
+          subscription_spending,
+          emi_spending,
+          investment_spending,
+          volatility,
+        });
+
+        if (savingsResult) {
+          setAiInsight(
+            savingsResult.score_message || savingsResult.recommendations?.[0] || aiInsight
+          );
+        } else {
+          generateAIInsight(overallScore, {
+            spendingControl: Math.round(spendingControl),
+            goalProgress: Math.round(goalProgress),
+            savingsRate: Math.round(savingsRate),
+            debtRatio: Math.round(debtRatio),
+          });
+        }
+      } catch (e) {
+        console.error('Error getting savings insights:', e);
+        generateAIInsight(overallScore, {
+          spendingControl: Math.round(spendingControl),
+          goalProgress: Math.round(goalProgress),
+          savingsRate: Math.round(savingsRate),
+          debtRatio: Math.round(debtRatio),
+        });
+      }
 
     } catch (error) {
       console.error('Error calculating health score:', error);

@@ -16,6 +16,7 @@ import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import FinancialHealthScore from '@/components/dashboard/FinancialHealthScore';
 import AIInsightsPanel from '@/components/dashboard/AIInsightsPanel';
+import MLIntegrationPanel from '@/components/dashboard/MLIntegrationPanel';
 import SpendingChart from '@/components/charts/SpendingChart';
 import CategoryChart from '@/components/charts/CategoryChart';
 import WeeklyBreakdownChart from '@/components/charts/WeeklyBreakdownChart';
@@ -321,6 +322,17 @@ export default function DashboardPage() {
             <ForecastChart />
           </motion.div>
         </div>
+      </section>
+
+      {/* ML Models Status Section */}
+      <section className="py-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.7 }}
+        >
+          <MLIntegrationPanel />
+        </motion.div>
       </section>
 
       {/* AI Insights & Recent Transactions Section */}

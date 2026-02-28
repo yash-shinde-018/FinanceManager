@@ -69,74 +69,214 @@ export async function getDashboardOverview() {
     if (t.type === 'expense') monthlySpending += Number(t.amount);
   });
 
-  // Get ML-powered forecast for next 30 days (only if user has transaction history)
-  let predictedSpending = monthlySpending; // fallback to current month
+  // If seeded/demo data is old, the last-30-days window might be empty.
+  // Fall back to the most recent 30 days relative to the latest transaction.
+  if ((recentSpending?.length ?? 0) === 0) {
+    const { data: latestRow, error: latestError } = await supabase
+      .from('transactions')
+      .select('occurred_at')
+      .eq('user_id', user.id)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!latestError && latestRow?.occurred_at) {
+      const latestDate = new Date(latestRow.occurred_at);
+      const fallbackSince = new Date(latestDate);
+      fallbackSince.setDate(fallbackSince.getDate() - 30);
+
+      const { data: fallbackSpending, error: fallbackError } = await supabase
+        .from('transactions')
+        .select('amount, type, occurred_at')
+        .eq('user_id', user.id)
+        .gte('occurred_at', fallbackSince.toISOString())
+        .lte('occurred_at', latestDate.toISOString());
+
+      if (!fallbackError) {
+        monthlySpending = 0;
+        (fallbackSpending ?? []).forEach((t) => {
+          if (t.type === 'expense') monthlySpending += Number(t.amount);
+        });
+      }
+    }
+  }
+
+  // Get ML-powered forecast for next month (only if user has 12+ months of data)
+  let predictedSpending = 0; // Don't show monthly spending as fallback
   let forecastStatus: DashboardOverview['forecastStatus'] = 'insufficient_data';
   let forecastModelUsed = 'No Data';
   let daysOfData = 0;
   
-  // Check if user has any transactions before calling ML forecast
-  const { count: transactionCount } = await supabase
+  // Check if user has transactions spanning 12+ months
+  const { data: dateRange, error: dateError } = await supabase
     .from('transactions')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id);
+    .select('occurred_at')
+    .eq('user_id', user.id)
+    .order('occurred_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
   
-  const hasTransactions = (transactionCount ?? 0) > 0 || monthlySpending > 0;
+  console.log('Dashboard: First transaction query result:', { dateRange, dateError, userId: user.id });
+  if (dateError) {
+    console.error('Dashboard: Failed to fetch first transaction date:', dateError);
+  }
   
-  if (hasTransactions) {
+  const firstTransactionDate = dateRange?.occurred_at ? new Date(dateRange.occurred_at) : null;
+  const now = new Date();
+  const monthsDiff = firstTransactionDate 
+    ? (now.getFullYear() - firstTransactionDate.getFullYear()) * 12 + (now.getMonth() - firstTransactionDate.getMonth())
+    : 0;
+  
+  console.log('Dashboard: Date analysis:', { firstTransactionDate, monthsDiff, now });
+  
+  // Need at least 12 months of data for prediction
+  if (monthsDiff >= 11) {
     try {
-      // Fetch user's actual transactions for the ML forecast
-      const { data: userTransactions } = await supabase
+      // Aggregate transactions by month for ML API
+      const { data: allTransactions, error: transError } = await supabase
         .from('transactions')
-        .select('occurred_at, description, amount, category')
+        .select('occurred_at, amount, type, category')
         .eq('user_id', user.id)
         .order('occurred_at', { ascending: true });
       
-      // Format transactions for ML API
-      const mlTransactions: MLTransaction[] = (userTransactions || []).map((t) => ({
-        date: t.occurred_at.split('T')[0],
-        description: t.description || 'Transaction',
-        amount: Number(t.amount),
-        category: t.category || 'Other',
-      }));
+      console.log('Dashboard: All transactions query:', { count: allTransactions?.length, error: transError });
+      if (transError) {
+        console.error('Dashboard: Failed to fetch transactions for prediction:', transError);
+      }
+      daysOfData = allTransactions?.length || 0;
       
-      // Call ML API with user's actual transactions
-      const forecast = await mlClient.getForecastWithTransactions(mlTransactions, 30);
+      // Group by month and calculate totals
+      const monthlyMap = new Map<string, {
+        date: string;
+        total_expense: number;
+        total_income: number;
+        expense_food: number;
+        expense_travel: number;
+        expense_bills: number;
+        expense_emi: number;
+        expense_shopping: number;
+        expense_investment: number;
+        expense_healthcare: number;
+        expense_entertainment: number;
+        expense_subscription: number;
+        expense_transfer: number;
+        expense_others: number;
+      }>();
       
-      if (forecast) {
-        // Store forecast metadata
-        forecastStatus = forecast.status || 'ok';
-        forecastModelUsed = forecast.model_used || 'Unknown';
-        daysOfData = forecast.days_of_data || 0;
+      (allTransactions || []).forEach((t) => {
+        const date = new Date(t.occurred_at);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
         
-        // Use forecast if it has a valid positive prediction
-        if (forecast.total_predicted > 0 && forecast.total_predicted < 1000000) {
-          predictedSpending = Math.abs(forecast.total_predicted);
-        } else if (daysOfData < 14) {
-          // Less than 14 days span - insufficient data
-          predictedSpending = 0;
-          forecastStatus = 'insufficient_data';
-          forecastModelUsed = 'Need 14+ days of data';
+        if (!monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, {
+            date: monthKey,
+            total_expense: 0,
+            total_income: 0,
+            expense_food: 0,
+            expense_travel: 0,
+            expense_bills: 0,
+            expense_emi: 0,
+            expense_shopping: 0,
+            expense_investment: 0,
+            expense_healthcare: 0,
+            expense_entertainment: 0,
+            expense_subscription: 0,
+            expense_transfer: 0,
+            expense_others: 0,
+          });
+        }
+        
+        const month = monthlyMap.get(monthKey)!;
+        const amount = Number(t.amount);
+        
+        if (t.type === 'expense') {
+          month.total_expense += amount;
+          
+          // Categorize expenses
+          const category = (t.category || '').toLowerCase();
+          if (category.includes('food')) month.expense_food += amount;
+          else if (category.includes('travel') || category.includes('transport')) month.expense_travel += amount;
+          else if (category.includes('bill') || category.includes('utility')) month.expense_bills += amount;
+          else if (category.includes('emi') || category.includes('loan')) month.expense_emi += amount;
+          else if (category.includes('shop')) month.expense_shopping += amount;
+          else if (category.includes('invest')) month.expense_investment += amount;
+          else if (category.includes('health') || category.includes('medical')) month.expense_healthcare += amount;
+          else if (category.includes('entertainment') || category.includes('movie')) month.expense_entertainment += amount;
+          else if (category.includes('subscription')) month.expense_subscription += amount;
+          else if (category.includes('transfer')) month.expense_transfer += amount;
+          else month.expense_others += amount;
         } else {
-          // Has date span but forecast returned 0 - show insufficient data
-          predictedSpending = 0;
+          month.total_income += amount;
+        }
+      });
+      
+      const monthlyData = Array.from(monthlyMap.values());
+      const avgMonthlyExpense = monthlyData.length
+        ? monthlyData.reduce((sum, m) => sum + (Number(m.total_expense) || 0), 0) / monthlyData.length
+        : 0;
+      
+      // Call ML API with aggregated monthly data
+      if (monthlyData.length >= 12) {
+        console.log('Dashboard: Calling predictSpending with', monthlyData.length, 'months');
+        const forecast = await mlClient.predictSpending(monthlyData);
+        
+        if (forecast) {
+          console.log('Dashboard: Prediction result:', forecast);
+          const rawPrediction =
+            (forecast as any)?.prediction ??
+            (forecast as any)?.predicted_expense ??
+            (forecast as any)?.predictedExpense;
+          console.log('Dashboard: Raw prediction:', rawPrediction, 'Type:', typeof rawPrediction);
+          forecastStatus = 'ok';
+          forecastModelUsed = forecast.model_used || 'Unknown';
+          
+          // Use prediction - handle both positive and negative values
+          // Convert to positive number if it's a valid prediction
+          const predValue = Math.abs(Number(rawPrediction));
+          console.log('Dashboard: Parsed prediction value:', predValue);
+          console.log('Dashboard: avgMonthlyExpense:', avgMonthlyExpense);
+
+          let normalizedPredValue = predValue;
+
+          // Heuristic: some model deployments return values in paise (x100).
+          // If prediction is wildly larger than historical monthly expenses, scale it down.
+          if (
+            Number.isFinite(avgMonthlyExpense) &&
+            avgMonthlyExpense > 0 &&
+            Number.isFinite(predValue) &&
+            predValue > avgMonthlyExpense * 20
+          ) {
+            normalizedPredValue = predValue / 100;
+            console.warn('Dashboard: Prediction looks inflated; scaling down by 100', {
+              predValue,
+              normalizedPredValue,
+              avgMonthlyExpense,
+            });
+          }
+
+          if (Number.isFinite(normalizedPredValue) && normalizedPredValue > 0) {
+            predictedSpending = normalizedPredValue;
+            console.log('Dashboard: Setting predictedSpending to:', predictedSpending);
+          } else {
+            console.warn('Dashboard: Prediction invalid (raw/parsed):', rawPrediction, predValue);
+          }
+        } else {
+          console.log('Dashboard: predictSpending returned null');
           forecastStatus = 'insufficient_data';
-          forecastModelUsed = 'Need more transaction days';
+          forecastModelUsed = 'Prediction unavailable';
         }
       } else {
-        // No forecast returned
-        predictedSpending = 0;
         forecastStatus = 'insufficient_data';
-        forecastModelUsed = 'No forecast available';
+        forecastModelUsed = `Need 12+ months, have ${monthlyData.length}`;
       }
     } catch (error) {
       console.error('Error getting ML forecast:', error);
+      forecastStatus = 'insufficient_data';
+      forecastModelUsed = 'Prediction failed';
     }
   } else {
-    // For new users with no transactions, show 0
-    predictedSpending = 0;
     forecastStatus = 'insufficient_data';
-    forecastModelUsed = 'No Data';
+    forecastModelUsed = `Need 12+ months, have ${monthsDiff + 1}`;
   }
 
   // Count anomaly alerts from recent transactions

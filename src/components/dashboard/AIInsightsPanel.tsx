@@ -84,60 +84,107 @@ export default function AIInsightsPanel() {
           return;
         }
 
-        // Format transactions for ML API
-        const mlTransactions = transactions.map(t => ({
-          date: new Date(t.occurred_at).toISOString().split('T')[0],
-          description: t.description,
-          amount: t.type === 'expense' ? -Math.abs(t.amount) : Math.abs(t.amount),
-          category: t.category,
-        }));
-
-        // Get insights from ML API
-        const response = await fetch('http://localhost:8000/insights/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(mlTransactions),
+        // Calculate financial metrics for savings recommendation
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        
+        const currentMonthTransactions = transactions.filter(t => {
+          const tDate = new Date(t.occurred_at);
+          return tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear;
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.insights) {
-            // Convert ML insights to AIInsight format
-            const formattedInsights: AIInsight[] = data.insights.map((insight: any, index: number) => {
-              // Map insight types correctly
-              let insightType = insight.type || 'tip';
+        const income = currentMonthTransactions
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-              return {
-                id: `ml-${index}`,
-                type: insightType,
-                title: insight.type === 'summary' ? 'Spending Summary' :
-                  insight.type === 'category' ? 'Top Category' :
-                    insight.type === 'overspending' ? 'Spending Alert' :
-                      insight.type === 'forecast' ? 'AI Forecast' :
-                        insight.type === 'pattern' ? 'Spending Pattern' :
-                          insight.type === 'recommendation' ? 'AI Recommendation' : 'Insight',
-                description: insight.message,
-                severity: insight.severity === 'high' ? 'alert' :
-                  insight.severity === 'medium' ? 'warning' :
-                    insight.severity === 'low' ? 'success' : 'info',
-                timestamp: new Date(),
-                actionRequired: insight.type === 'overspending' || insight.type === 'recommendation',
-                actionText: insight.type === 'overspending' ? 'Set Budget' : 'View Details',
-              };
-            });
-            setInsights(formattedInsights);
-          }
+        const expense = currentMonthTransactions
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+        const savings = income - expense;
+
+        const foodSpending = currentMonthTransactions
+          .filter(t => t.type === 'expense' && (t.category === 'food' || t.category === 'food_dining'))
+          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+        const subscriptionSpending = currentMonthTransactions
+          .filter(t => t.type === 'expense' && t.category === 'subscription')
+          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+        const emiSpending = currentMonthTransactions
+          .filter(t => t.type === 'expense' && t.category === 'emi')
+          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+        const investmentSpending = currentMonthTransactions
+          .filter(t => t.type === 'expense' && t.category === 'investment')
+          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+        // Calculate volatility (standard deviation of daily expenses)
+        const dailyExpenses = new Map<string, number>();
+        currentMonthTransactions
+          .filter(t => t.type === 'expense')
+          .forEach(t => {
+            const date = new Date(t.occurred_at).toISOString().split('T')[0];
+            dailyExpenses.set(date, (dailyExpenses.get(date) || 0) + Math.abs(t.amount));
+          });
+        
+        const expenseValues = Array.from(dailyExpenses.values());
+        const avgExpense = expenseValues.reduce((a, b) => a + b, 0) / (expenseValues.length || 1);
+        const variance = expenseValues.reduce((sum, val) => sum + Math.pow(val - avgExpense, 2), 0) / (expenseValues.length || 1);
+        const volatility = Math.sqrt(variance) / (avgExpense || 1);
+
+        // Get savings insights from ML API
+        const savingsData = await mlClient.getSavingsInsights({
+          income: income || 50000,
+          expense: expense || 30000,
+          savings: savings || 20000,
+          food_spending: foodSpending || 5000,
+          subscription_spending: subscriptionSpending || 1000,
+          emi_spending: emiSpending || 5000,
+          investment_spending: investmentSpending || 3000,
+          volatility: Math.min(volatility, 1) || 0.15,
+        });
+
+        if (savingsData && savingsData.recommendations) {
+          // Convert ML recommendations to AIInsight format
+          const formattedInsights: AIInsight[] = savingsData.recommendations.map((rec: string, index: number) => ({
+            id: `ml-${index}`,
+            type: rec.toLowerCase().includes('save') ? 'savings' :
+                  rec.toLowerCase().includes('reduce') || rec.toLowerCase().includes('cut') ? 'overspending' :
+                  rec.toLowerCase().includes('invest') ? 'forecast' : 'tip',
+            title: savingsData.behavior_class || 'Financial Insight',
+            description: rec,
+            severity: savingsData.risk_level === 'High' ? 'alert' :
+                      savingsData.risk_level === 'Medium' ? 'warning' : 'success',
+            timestamp: new Date(),
+            actionRequired: true,
+            actionText: 'View Details',
+          }));
+
+          // Add financial health score insight
+          formattedInsights.unshift({
+            id: 'health-score',
+            type: 'forecast',
+            title: `Financial Health: ${savingsData.financial_health_score}/100`,
+            description: savingsData.score_message || savingsData.score_interpretation,
+            severity: savingsData.financial_health_score >= 70 ? 'success' :
+                      savingsData.financial_health_score >= 50 ? 'warning' : 'alert',
+            timestamp: new Date(),
+          });
+
+          setInsights(formattedInsights);
         } else {
-          throw new Error('Failed to get insights');
+          throw new Error('No recommendations received');
         }
       } catch (error) {
-        console.error('Error loading ML insights:', error);
+        console.error('Failed to get insights', error);
         setInsights([
           {
             id: '1',
             type: 'tip',
             title: 'AI Insights',
-            description: 'Add transactions to get personalized insights. Make sure ML API is running on port 8000.',
+            description: 'Add more transactions to get personalized AI-powered insights and recommendations.',
             severity: 'info',
             timestamp: new Date(),
           },
